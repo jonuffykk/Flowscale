@@ -1,0 +1,14 @@
+config_version=5
+
+[application]
+config/name="FlowScale Bench"
+run/main_scene="res://main.tscn"
+run/max_fps=0
+
+[display]
+window/size/viewport_width=960
+window/size/viewport_height=540
+window/vsync/vsync_mode=0
+
+[rendering]
+renderer/rendering_method="forward_plus"

@@ -1,0 +1,6 @@
+<!doctype html><title>FlowTest</title><body style="margin:0;background:#123;overflow:hidden">
+<canvas id=c width=640 height=360></canvas><script>
+const c=document.getElementById('c').getContext('2d');let t=0;
+setInterval(()=>{t++;c.fillStyle='#123';c.fillRect(0,0,640,360);for(let i=0;i<8;i++){c.fillStyle=`hsl(${i*45},80%,60%)`;c.fillRect((t*4+i*90)%700-60,40+i*38,60,30)}
+c.fillStyle='#fff';c.font='20px monospace';c.fillText('HUD '+t,10,24)},1000/30);
+</script>

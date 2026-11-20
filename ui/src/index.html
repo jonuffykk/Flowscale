@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlowScale</title>
+<style id="css"></style>
+</head>
+<body>
+<div class="shell">
+  <nav class="rail" aria-label="Sections">
+    <div class="brand" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 16c3.5 0 4.5-8 9-8s5.5 8 9 8"/></svg></div>
+    <button class="tab" data-tab="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13h4l3-8 4 14 3-6h4"/></svg><span data-t="tab.home"></span></button>
+    <button class="tab" data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span data-t="tab.settings"></span></button>
+    <button class="tab" data-tab="ingame"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4M8 12l3-3 2 2 3-3"/></svg><span data-t="tab.ingame"></span></button>
+    <div class="rail-foot"><select id="lang" class="lang" aria-label="Language"><option value="pt">PT</option><option value="en">EN</option><option value="es">ES</option></select></div>
+  </nav>
+
+  <main>
+    <header class="bar">
+      <h1 id="pageTitle"></h1>
+      <select id="profile" class="field" style="width: 210px" aria-label="Profile"></select>
+      <button id="btnAddProfile" class="btn btn-quiet" data-t="profile.add"></button>
+      <button id="btnRemoveProfile" class="btn btn-quiet" data-t="profile.remove"></button>
+      <div class="spacer"></div>
+      <span id="keysHint" class="muted" style="font-size:12px"></span>
+    </header>
+
+    <section class="page" data-page="home">
+      <div class="home">
+        <div id="rtssBox" class="notice hidden"><div><h3 data-t="rtss.title"></h3><p data-t="rtss.body"></p></div><button class="btn btn-line" id="btnRtss" data-t="rtss.fix"></button></div>
+        <div class="tiles">
+          <article class="tile" id="tileScale">
+            <div><h2 data-t="home.scale"></h2><p class="state" id="scaleState"></p></div>
+            <div class="chips" id="scaleChips"></div>
+            <div class="acts"><button id="btnScale" class="btn btn-primary btn-lg"></button><span class="muted" id="scaleKey"></span></div>
+          </article>
+          <article class="tile" id="tileLimit">
+            <div><h2 data-t="home.limit"></h2><p class="state" id="limState"></p></div>
+            <div class="chips" id="limChips"></div>
+            <div class="acts"><button id="btnLimit" class="btn btn-primary btn-lg"></button><span class="muted" id="limKey"></span></div>
+          </article>
+        </div>
+
+        <div id="smoothTip" class="notice tip hidden"><div><h3 data-t="smooth.title"></h3><p data-t="smooth.body"></p></div><button class="btn btn-primary" id="btnSmooth" data-t="smooth.apply"></button></div>
+
+        <section class="card">
+          <div class="card-head">
+            <div><h2 data-t="graph.title"></h2><p id="graphSub"></p></div>
+            <div class="legend"><span><i style="background:var(--game)"></i><span data-t="graph.game"></span></span><span><i style="background:var(--accent)"></i><span data-t="graph.out"></span></span></div>
+          </div>
+          <canvas id="graph"></canvas>
+          <dl class="metrics">
+            <div class="metric game"><dt data-t="m.fps"></dt><dd id="mLimFps">—</dd></div>
+            <div class="metric"><dt data-t="m.low1"></dt><dd id="mLimLow">—</dd></div>
+            <div class="metric"><dt data-t="m.sd"></dt><dd id="mLimSd">—</dd></div>
+            <div class="metric"><dt data-t="m.cap"></dt><dd id="mLimCap">—</dd></div>
+            <div class="metric out"><dt data-t="m.outfps"></dt><dd id="mOutFps">—</dd></div>
+            <div class="metric"><dt data-t="m.captured"></dt><dd id="mRealFps">—</dd></div>
+            <div class="metric"><dt data-t="m.ratio"></dt><dd id="mRatio">—</dd></div>
+            <div class="metric"><dt data-t="m.sd"></dt><dd id="mOutSd">—</dd></div>
+          </dl>
+        </section>
+
+        <section class="card">
+          <div class="card-head"><div><h2 data-t="quick.title"></h2><p data-t="quick.sub"></p></div><button class="btn btn-quiet" data-go="settings" data-t="quick.all"></button></div>
+          <div class="quick" id="quick"></div>
+        </section>
+      </div>
+    </section>
+
+    <section class="page hidden" data-page="settings">
+      <div class="settings">
+        <aside class="index"><input id="search" class="field" type="search" autocomplete="off"><div id="index"></div></aside>
+        <div id="sections"></div>
+      </div>
+    </section>
+
+    <section class="page hidden" data-page="ingame">
+      <div class="ingame">
+        <div class="live" id="srLive"><i class="dot" id="srDot"></i><span id="srLiveText"></span></div>
+        <div class="section" style="margin:0">
+          <h2 data-t="sr.title"></h2><p data-t="sr.sub"></p>
+          <div class="rows" id="srRows"></div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:12px"><button id="btnSrApply" class="btn btn-line" data-t="sr.apply"></button><span class="muted" data-t="sr.f9"></span></div>
+        </div>
+        <div class="section" style="margin:0">
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px">
+            <div><h2 data-t="games.title"></h2><p id="gamesSub" data-t="games.sub"></p></div>
+            <button id="btnGames" class="btn btn-primary" data-t="games.find"></button>
+          </div>
+          <div class="rows" style="padding:0"><ul class="games" id="games"></ul></div>
+          <div class="addrow" style="margin-top:10px"><input id="gamePath" class="field" spellcheck="false"><button id="btnGameAdd" class="btn btn-line" data-t="games.add"></button></div>
+          <p class="muted" style="margin-top:10px;font-size:12px" data-t="games.safe"></p>
+        </div>
+      </div>
+    </section>
+
+    <footer class="status"><i id="statusDot" class="dot"></i><span id="status"></span></footer>
+  </main>
+</div>
+
+<dialog id="picker">
+  <div class="dlg-head"><h3 id="pickerTitle"></h3><button class="btn btn-quiet" data-close data-t="close"></button></div>
+  <input id="pickerSearch" class="field dlg-search" type="search" autocomplete="off">
+  <ul id="pickerList" class="picks"></ul>
+  <div class="dlg-foot" id="pickerFoot"></div>
+</dialog>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const send = m => window.chrome?.webview?.postMessage(m);
+const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// ---------------------------------------------------------------- language
+// Every string: key -> [pt, en]. Choice options: "o.<key>" -> [[pt...], [en...]].
+const T = {
+  "tab.home": ["Início", "Home"], "tab.settings": ["Ajustes", "Settings"], "tab.ingame": ["No jogo", "In game"],
+  "title.home": ["Início", "Home"], "title.settings": ["Ajustes", "Settings"], "title.ingame": ["Upscaling no jogo", "In-game upscaling"],
+  "profile.add": ["Novo perfil de jogo", "New game profile"], "profile.remove": ["Excluir perfil", "Delete profile"], "profile.default": ["Padrão (todos os jogos)", "Default (all games)"],
+  "home.scale": ["Escala e geração de quadros", "Scaling & frame generation"], "home.limit": ["Limitador de FPS", "Frame limiter"],
+  "scale.idle": ["Escolha a janela do jogo. Ela continua do jeito que está; o FlowScale desenha por cima.", "Pick the game window. It stays as it is; FlowScale draws on top."],
+  "scale.on": ["Ativo em <b>{0}</b>", "Running on <b>{0}</b>"], "scale.start": ["Escolher janela", "Choose window"], "scale.stop": ["Parar", "Stop"],
+  "lim.idle": ["Trava o FPS por dentro do jogo, com precisão de 0,01 FPS.", "Caps the frame rate from inside the game, exact to 0.01 fps."],
+  "lim.on": ["Limitando <b>{0}</b> em {1} FPS", "Limiting <b>{0}</b> to {1} fps"], "lim.paused": ["<b>{0}</b> pausado", "<b>{0}</b> paused"], "lim.wait": ["Conectado a <b>{0}</b>, aguardando quadros", "Attached to <b>{0}</b>, waiting for frames"],
+  "lim.busy": ["Conectando…", "Attaching…"], "lim.start": ["Limitar um jogo", "Limit a game"], "lim.stop": ["Parar", "Stop"],
+  "chip.full": ["Tela cheia", "Fullscreen"], "chip.win": ["Em janela", "Windowed"], "chip.nofg": ["Sem geração", "No frame gen"],
+  "smooth.title": ["Ritmo perfeito para a geração de quadros", "Perfect pacing for frame generation"],
+  "smooth.body": ["Limite o jogo em taxa do monitor ÷ multiplicador e use VSync: cada quadro de saída dura exatamente uma atualização. Medido: σ 0,21 ms em vez de 1,3 ms.", "Cap the game at refresh ÷ multiplier and use VSync: every output frame lasts exactly one refresh. Measured: σ 0.21 ms instead of 1.3 ms."],
+  "smooth.apply": ["Aplicar", "Apply"],
+  "rtss.title": ["O RivaTuner está desenhando um segundo contador", "RivaTuner is drawing a second counter"],
+  "rtss.body": ["O RTSS também se injeta na saída do FlowScale. Excluir o FlowScale no RTSS deixa só o contador do jogo. Pede permissão de administrador uma vez.", "RTSS also hooks FlowScale's output. Excluding FlowScale in RTSS keeps only the game's counter. Asks for administrator approval once."],
+  "rtss.fix": ["Excluir no RTSS", "Exclude in RTSS"],
+  "graph.title": ["Tempo de quadro", "Frame time"], "graph.game": ["Jogo", "Game"], "graph.out": ["Saída", "Output"],
+  "graph.idle": ["Escale uma janela ou limite um jogo para ver o ritmo dos quadros ao vivo.", "Scale a window or limit a game to see frame pacing live."],
+  "graph.live": ["Mais baixo e mais reto é melhor. A linha tracejada é o alvo do limitador.", "Lower and flatter is better. The dashed line is the limiter target."],
+  "m.fps": ["FPS do jogo", "Game FPS"], "m.low1": ["1% mínima", "1% low"], "m.sd": ["Variação (σ)", "Variation (σ)"], "m.cap": ["Limite", "Cap"],
+  "m.outfps": ["FPS de saída", "Output FPS"], "m.captured": ["Capturado", "Captured"], "m.ratio": ["Geração", "Generation"],
+  "quick.title": ["Ajustes rápidos", "Quick settings"], "quick.sub": ["Do perfil selecionado. Mudanças valem na próxima vez que escalar.", "For the selected profile. Changes apply the next time you scale."], "quick.all": ["Todos os ajustes", "All settings"],
+  "search": ["Buscar ajuste", "Search settings"], "nothing": ["Nenhum ajuste com esse nome.", "No setting matches."],
+  "close": ["Fechar", "Close"], "pick.scale": ["Qual janela?", "Which window?"], "pick.limit": ["Qual jogo limitar?", "Which game to limit?"], "pick.profile": ["Criar perfil para qual jogo?", "Create a profile for which game?"],
+  "pick.search": ["Filtrar por nome", "Filter by name"], "pick.loading": ["Procurando janelas…", "Looking for windows…"], "pick.none": ["Nenhuma janela encontrada. Abra o jogo primeiro.", "No windows found. Start the game first."],
+  "pick.foot.scale": ["Dica: com o jogo em foco, {0} escala direto.", "Tip: with the game focused, {0} scales it directly."],
+  "pick.foot.limit": ["Usa o limite do perfil do jogo, ou do Padrão.", "Uses the game's profile cap, or Default's."],
+  "pick.foot.profile": ["O novo perfil começa como cópia do selecionado.", "The new profile starts as a copy of the selected one."],
+  "pick.countdown": ["Ou escolha em 4 segundos", "Or pick within 4 seconds"],
+  "hk.listen": ["Pressione o atalho…", "Press the shortcut…"], "hk.none": ["Nenhum", "None"], "hk.clear": ["Limpar", "Clear"],
+  "sr.title": ["FlowScale SR", "FlowScale SR"],
+  "sr.sub": ["Upscaler temporal que roda dentro do jogo, com a profundidade, os vetores de movimento e o jitter do próprio jogo. Ele ocupa o lugar do FSR 3.1 ou do XeSS: depois de instalar, escolha essa opção no jogo.", "Temporal upscaler running inside the game, from the game's own depth, motion vectors and jitter. It takes the place of FSR 3.1 or XeSS: after installing, pick that option in the game."],
+  "sr.apply": ["Gravar nos jogos instalados", "Write to installed games"], "sr.f9": ["F9 recarrega com o jogo aberto.", "F9 reloads them in a running game."],
+  "sr.idle": ["Não está rodando em nenhum jogo agora.", "Not running in a game right now."], "sr.live": ["Rodando em {0} · entrada {1} · {2} → {3} · {4}", "Running in {0} · {1} input · {2} → {3} · {4}"], "sr.measuring": ["medindo", "measuring"],
+  "games.title": ["Jogos", "Games"], "games.sub": ["Steam, Epic, GOG, Xbox, Heroic e pastas que você adicionar.", "Steam, Epic, GOG, Xbox, Heroic and folders you add."],
+  "games.find": ["Procurar jogos", "Find games"], "games.busy": ["Procurando…", "Searching…"], "games.add": ["Adicionar pasta", "Add folder"], "games.path": ["Caminho da pasta de um jogo", "Path of a game folder"],
+  "games.empty": ["Clique em Procurar jogos.", "Click Find games."], "games.install": ["Instalar", "Install"], "games.restore": ["Restaurar", "Restore"], "games.folder": ["Abrir pasta", "Open folder"],
+  "games.ac": ["anti-cheat: não será modificado", "anti-cheat: won't be modified"], "games.need": ["precisa de FSR 3.1 ou XeSS", "needs FSR 3.1 or XeSS"], "games.nodll": ["nenhuma DLL de upscaler", "no upscaler DLL"],
+  "games.safe": ["Tudo que é trocado fica guardado na pasta flowscale-backup do jogo e volta com Restaurar. Jogos com anti-cheat nunca são modificados.", "Everything replaced is kept in the game's flowscale-backup folder and comes back with Restore. Games with anti-cheat are never modified."],
+  "elevate": ["Abrir como administrador", "Run as administrator"], "folder": ["Abrir pasta de ajustes e logs", "Open settings & logs folder"], "reset": ["Restaurar padrões deste perfil", "Reset this profile"],
+  "vk": ["Suporte a Vulkan", "Vulkan support"], "vk.h": ["Registra uma layer Vulkan só para o seu usuário. Fica inativa em todo processo que o FlowScale não estiver limitando. Reinicie o jogo depois de ativar.", "Registers a per-user Vulkan layer. It stays idle in every process FlowScale isn't limiting. Restart the game after enabling."],
+  "windowed.note": ["Em janela, a imagem fica 1:1 sobre o jogo. Escala e cursor valem no modo Tela cheia; a nitidez continua valendo.", "Windowed keeps the picture 1:1 over the game. Scaling and cursor options apply to Fullscreen; sharpening still applies."],
+  ready: ["Pronto", "Ready"],
+  "sec.profile": ["Este perfil", "This profile"],
+  "match": ["Vale para", "Applies to"],
+  "match.h": ["Além do próprio exe: outros executáveis, caminhos completos ou títulos de janela, separados por ponto e vírgula. Aceita * e ?.", "Besides its own exe: other executables, full paths or window titles, separated by semicolons. Accepts * and ?."],
+  "match.ph": ["jogo.exe; *Dolphin*; C:\\Jogos\\*", "game.exe; *Dolphin*; C:\\Games\\*"],
+  "off": ["desligado", "off"], "game": ["jogo", "game"],
+};
+const S_ = {
+  output: ["Saída", "Output", "Onde a imagem final aparece e como ela é apresentada.", "Where the final picture appears and how it's presented."],
+  scaling: ["Escala", "Scaling", "Como a janela capturada é ampliada para o monitor.", "How the captured window is enlarged to the display."],
+  framegen: ["Geração de quadros", "Frame generation", "Quadros intermediários por fluxo óptico. Funciona em qualquer janela, sem suporte do jogo.", "In-between frames from optical flow. Works on any window, no game support needed."],
+  limiter: ["Limitador", "Limiter", "Controla o ritmo do jogo por dentro do loop de renderização. D3D9, D3D11, D3D12, OpenGL e Vulkan. Jogos com anti-cheat são ignorados.", "Paces the game from inside its render loop. D3D9, D3D11, D3D12, OpenGL and Vulkan. Games with anti-cheat are skipped."],
+  osd: ["Overlay no jogo", "In-game overlay", "O painel de FPS. Aparece sobre a imagem escalada, ou sobre a janela do jogo quando só o limitador está ativo.", "The FPS panel. Drawn on the scaled picture, or over the game window when only the limiter is on."],
+  cursor: ["Cursor e recorte", "Cursor & crop", "Valem no modo Tela cheia.", "Apply in Fullscreen mode."],
+  auto: ["Automação", "Automation", "Comportamento automático deste perfil.", "Automatic behaviour of this profile."],
+  keys: ["Atalhos", "Shortcuts", "Funcionam em qualquer lugar, inclusive dentro do jogo. Clique e pressione a combinação.", "Work anywhere, including in game. Click and press the combination."],
+  app: ["App", "App", "", ""],
+};
+const L = {
+  output: ["Modo", "Mode", "Em janela cobre só a janela do jogo: não precisa de tela cheia, a área de trabalho continua visível e o mouse funciona normal.", "Windowed covers just the game window: no fullscreen needed, the desktop stays visible and the mouse works normally."],
+  sync: ["Sincronia", "Sync", "VSync dá o ritmo mais regular. Sem VSync tem menos latência.", "VSync gives the steadiest pacing. No VSync has less latency."],
+  max_latency: ["Quadros na fila", "Queued frames", "1 é o menor atraso.", "1 has the least delay."],
+  hdr: ["HDR (scRGB)", "HDR (scRGB)", "Só com HDR ligado no Windows.", "Only with HDR on in Windows."],
+  capture: ["Captura", "Capture", "Graphics Capture funciona com janelas cobertas; Duplicação da tela é o plano B.", "Graphics Capture works with covered windows; Desktop Duplication is the fallback."],
+  gpu: ["Placa de vídeo", "GPU", "Automático usa a que controla o monitor.", "Auto uses the one driving the display."],
+  display: ["Monitor", "Display", "", ""], keep_unfocused: ["Continuar sem foco", "Keep running unfocused", "Mantém a saída visível quando outra janela ganha foco.", "Keeps the output visible when another window takes focus."],
+  scaler: ["Escalador", "Scaler", "FSR 1 é o mais nítido para jogos; Inteiro e Vizinho para pixel art.", "FSR 1 is sharpest for games; Integer and Nearest for pixel art."],
+  sharpness: ["Nitidez", "Sharpness", "RCAS depois do escalador.", "RCAS after the scaler."],
+  scale_mode: ["Tamanho", "Size", "", ""], factor: ["Fator", "Factor", "", ""], fit: ["Proporção", "Aspect", "", ""],
+  resize: ["Diminuir o jogo antes", "Shrink the game first", "Redimensiona a janela do jogo para tela ÷ fator antes de escalar.", "Resizes the game window to screen ÷ factor before scaling."],
+  framegen: ["Geração", "Generation", "", ""], multiplier: ["Multiplicador", "Multiplier", "Saída = FPS do jogo × multiplicador.", "Output = game FPS × multiplier."],
+  target: ["FPS alvo", "Target FPS", "Gera quantos quadros forem precisos para chegar nessa taxa.", "Generates as many frames as needed to reach this rate."],
+  quality: ["Qualidade", "Quality", "Desempenho custa cerca de 4 ms em 1080p numa GTX 1650, com a mesma qualidade medida.", "Performance costs about 4 ms at 1080p on a GTX 1650, at the same measured quality."],
+  flow_scale: ["Resolução do fluxo", "Flow resolution", "Fração da resolução usada para estimar o movimento.", "Fraction of the resolution used to estimate motion."],
+  ui_threshold: ["Proteção do HUD", "HUD protection", "Impede que textos e ícones parados sejam deformados.", "Keeps static text and icons from warping."],
+  limiter: ["Limitar este jogo", "Limit this game", "Liga o limitador quando este perfil é usado.", "Turns the limiter on when this profile is used."],
+  cap_mode: ["Limite", "Cap", "Casar com a geração = taxa do monitor ÷ multiplicador.", "Match frame gen = refresh ÷ multiplier."],
+  fps_cap: ["FPS", "FPS", "Valor exato, até 0,01.", "Exact value, to 0.01."],
+  latency_mode: ["Espera", "Wait", "Baixa latência espera depois do Present, antes de o jogo ler os comandos.", "Low latency waits after Present, before the game reads input."],
+  draw_cursor: ["Desenhar o cursor", "Draw the cursor", "", ""], scale_cursor: ["Escalar o cursor", "Scale the cursor", "", ""], clip_cursor: ["Prender o cursor no jogo", "Keep the cursor in the game", "", ""],
+  cursor_speed: ["Ajustar a velocidade do mouse", "Adjust mouse speed", "Compensa a ampliação. Volta ao normal ao parar.", "Compensates for the enlargement. Restored when you stop."],
+  crop_l: ["Cortar à esquerda", "Crop left", "", ""], crop_t: ["Cortar em cima", "Crop top", "", ""], crop_r: ["Cortar à direita", "Crop right", "", ""], crop_b: ["Cortar embaixo", "Crop bottom", "", ""],
+  auto: ["Escalar ao focar o jogo", "Scale when the game gets focus", "Só em perfis de jogo.", "Game profiles only."], delay: ["Atraso", "Delay", "", ""],
+  osd: ["Mostrar overlay", "Show overlay", "", ""], osd_detail: ["Detalhe", "Detail", "Completo inclui o gráfico de tempo de quadro.", "Full adds the frame-time graph."],
+  osd_pos: ["Posição", "Position", "", ""], osd_theme: ["Tema", "Theme", "", ""], osd_scale: ["Tamanho", "Size", "", ""], osd_opacity: ["Opacidade", "Opacity", "", ""],
+  osd_limiter: ["Também só com o limitador", "Also with only the limiter", "Mostra o painel sobre o jogo mesmo sem escalar. Funciona com jogos em janela ou sem borda.", "Shows the panel over the game even without scaling. Works with windowed or borderless games."],
+  hk_scale: ["Escalar / parar", "Scale / stop", "", ""], hk_limit: ["Pausar o limitador", "Pause the limiter", "Sem limitador ativo, limita o jogo em foco.", "With no limiter active, limits the focused game."], hk_osd: ["Mostrar / ocultar overlay", "Show / hide overlay", "", ""],
+  auto_detect: ["Detectar jogos sozinho", "Detect games automatically", "Liga o limitador nos jogos que ganham foco quando o perfil Padrão está com ele ligado.", "Attaches the limiter to games that take focus when Default has it on."],
+  close_to_tray: ["Minimizar e fechar para a bandeja", "Minimize and close to tray", "", ""], start_minimized: ["Iniciar minimizado", "Start minimized", "", ""], autostart: ["Iniciar com o Windows", "Start with Windows", "", ""],
+  sr_sharpness: ["Nitidez", "Sharpness", "0,60 mantém a imagem como foi reconstruída.", "0.60 keeps the image as reconstructed."],
+  sr_weight: ["Peso do quadro", "Frame weight", "Menor é mais estável, maior é mais nítido em movimento.", "Lower is steadier, higher is crisper in motion."],
+  sr_sharpen_mode: ["Filtro de nitidez", "Sharpening filter", "", ""], sr_fp16: ["Precisão", "Precision", "FP16 ajuda algumas GPUs, não todas.", "FP16 helps some GPUs, not all."],
+  sr_ratio: ["Escala de render forçada", "Forced render scale", "Em \"jogo\" valem os modos de qualidade do próprio jogo.", "At \"game\" the game's own quality modes apply."],
+  sr_anti_shimmer: ["Anti-cintilação", "Anti-shimmer", "Acalma o serrilhado que pisca a cada quadro.", "Calms aliasing that flickers every frame."],
+  sr_relight: ["Reiluminação (experimental)", "Relight (experimental)", "Oclusão ambiente em tela e um rebote de luz antes do upscaling.", "Screen-space ambient occlusion and one light bounce before upscaling."],
+  sr_compare: ["Tecla de comparação", "Comparison key", "F11 mostra o FlowScale SR à esquerda e o original à direita.", "F11 shows FlowScale SR left and the original right."],
+  sr_indicator: ["Indicador", "Indicator", "Uma marquinha no canto enquanto o FlowScale SR está ativo.", "A small mark in the corner while FlowScale SR is active."],
+  queue: ["Fila de captura", "Capture queue", "0 usa sempre o quadro mais novo (menor latência). 1 e 2 seguram quadros na fila e ficam mais estáveis com FPS instável ou GPU no limite.", "0 always uses the newest frame (least latency). 1 and 2 keep frames queued and stay steadier with unstable FPS or a busy GPU."],
+  gsync: ["Suporte a G-SYNC", "G-SYNC support", "Placas NVIDIA: libera o G-SYNC na janela do FlowScale com um perfil de driver só para ele. Desligar desfaz. FreeSync e Adaptive Sync não precisam disso.", "NVIDIA cards: lets G-SYNC run on FlowScale's window through a driver profile just for it. Turning it off undoes it. FreeSync and Adaptive Sync don't need this."],
+  follow_window: ["Seguir a janela do jogo", "Follow the game window", "Se o jogo fechar e reabrir a janela (troca de modo, launcher → jogo), volta a escalar sozinho.", "If the game closes and re-opens its window (mode switch, launcher → game), scaling resumes on its own."],
+  fsr_mode: ["Variante do FSR", "FSR variant", "Desempenho faz uma análise de borda por pixel em vez de quatro; bom para GPUs fracas.", "Performance runs one edge analysis per pixel instead of four; good for weaker GPUs."],
+  a4k_size: ["Rede do Anime4K", "Anime4K network", "Redes maiores reconstroem melhor e custam mais. Saída 720p numa GTX 1650: S 0,4 ms, M 1 ms, L 1,8 ms, VL 2,8 ms, UL 5,2 ms.", "Bigger networks reconstruct better and cost more. 720p output on a GTX 1650: S 0.4 ms, M 1 ms, L 1.8 ms, VL 2.8 ms, UL 5.2 ms."],
+  sharpen_filter: ["Filtro de nitidez", "Sharpening filter", "RCAS é o do FSR; CAS é o da AMD, mais suave em texturas finas.", "RCAS is FSR's; CAS is AMD's, gentler on fine textures."],
+  fg_min_fps: ["FPS mínimo para gerar", "Minimum FPS to generate", "Abaixo disso mostra só quadros reais, para não borrar em travadas. 0 desliga.", "Below this only real frames are shown, so hitches don't smear. 0 turns it off."],
+  dedup: ["Ignorar quadros repetidos", "Skip repeated frames", "Emuladores e jogos travados em 30 que mostram cada quadro duas vezes: interpola só entre quadros novos.", "Emulators and 30-fps games that show each frame twice: interpolate only between new frames."],
+  hide_cursor: ["Ocultar o cursor", "Hide the cursor", "Esconde o cursor enquanto escala; útil em jogos de controle.", "Hides the cursor while scaling; handy for controller games."],
+  osd_color: ["Cor de destaque", "Accent color", "", ""], osd_font: ["Fonte", "Font", "", ""],
+  osd_x: ["Afastar na horizontal", "Horizontal offset", "", ""], osd_y: ["Afastar na vertical", "Vertical offset", "", ""],
+  start_admin: ["Sempre abrir como administrador", "Always run as administrator", "Pede permissão ao abrir. Necessário para limitar jogos que rodam como administrador.", "Asks for permission on launch. Needed to limit games that run as administrator."],
+  theme: ["Tema", "Theme", "", ""],
+  vrs: ["Escala por região (VRS)", "Variable rate scaling (VRS)", "Reescala só as partes do quadro que mudaram. Alivia muito a GPU em conteúdo quase parado; em cenas com muito movimento o ganho some. Sem geração de quadros.", "Re-scales only the parts of the frame that changed. Big GPU savings on mostly static content; in busy scenes the gain disappears. Without frame generation."],
+};
+const O = {
+  output: [["Tela cheia", "Em janela"], ["Fullscreen", "Windowed"]],
+  sync: [["Tearing", "Sem VSync", "VSync", "Meio VSync"], ["Tearing", "No VSync", "VSync", "Half VSync"]],
+  capture: [["Graphics Capture", "Duplicação da tela", "GDI"], ["Graphics Capture", "Desktop Duplication", "GDI"]],
+  scaler: [["Desligado (1:1)", "Vizinho mais próximo", "Inteiro", "Bilinear", "Bilinear nítido", "Bicúbico", "Lanczos 3", "FSR 1", "Linha (anime)", "NVIDIA NIS", "Snapdragon GSR", "xBR (pixel art)", "Anime4K"], ["Off (1:1)", "Nearest", "Integer", "Bilinear", "Sharp bilinear", "Bicubic", "Lanczos 3", "FSR 1", "Line (anime)", "NVIDIA NIS", "Snapdragon GSR", "xBR (pixel art)", "Anime4K"]],
+  fsr_mode: [["Qualidade", "Desempenho"], ["Quality", "Performance"]], a4k_size: [["S", "M", "L", "VL", "UL"], ["S", "M", "L", "VL", "UL"]],
+  sharpen_filter: [["RCAS", "CAS"], ["RCAS", "CAS"]],
+  osd_color: [["Azul", "Verde", "Âmbar", "Rosa", "Ciano", "Neutro"], ["Blue", "Green", "Amber", "Pink", "Cyan", "Neutral"]],
+  osd_font: [["Segoe UI", "Bahnschrift", "Consolas"], ["Segoe UI", "Bahnschrift", "Consolas"]],
+  theme: [["Sistema", "Claro", "Escuro"], ["System", "Light", "Dark"]],
+  scale_mode: [["Ajustar à tela", "Fator"], ["Fit screen", "Factor"]], fit: [["Manter", "Esticar"], ["Keep", "Stretch"]],
+  framegen: [["Desligada", "Multiplicador", "FPS alvo"], ["Off", "Multiplier", "Target FPS"]],
+  quality: [["Desempenho", "Equilibrado", "Qualidade"], ["Performance", "Balanced", "Quality"]],
+  cap_mode: [["Personalizado", "Taxa do monitor", "VRR (−3%)", "Metade da taxa", "Casar com a geração"], ["Custom", "Refresh rate", "VRR (−3%)", "Half refresh", "Match frame gen"]],
+  latency_mode: [["Suave", "Baixa latência"], ["Smooth", "Low latency"]],
+  osd_detail: [["Compacto", "Normal", "Completo"], ["Compact", "Normal", "Full"]],
+  osd_pos: [["↖", "↗", "↙", "↘"], ["↖", "↗", "↙", "↘"]], osd_theme: [["Escuro", "Claro"], ["Dark", "Light"]],
+  sr_sharpen_mode: [["CAS", "RCAS"], ["CAS", "RCAS"]], sr_fp16: [["FP32", "FP16", "Só AMD"], ["FP32", "FP16", "AMD only"]],
+};
+const STATUS = {
+  scaling: ["Escalando: {0}", "Scaling: {0}"], stopped: ["Escala parada", "Scaling stopped"], error: ["Erro: {0}", "Error: {0}"],
+  countdown: ["Mude para o jogo… {0}", "Switch to the game… {0}"], autoscale: ["Escalando {0} em {1} s", "Scaling {0} in {1} s"], not_a_game: ["{0} não parece um jogo", "{0} doesn't look like a game"],
+  limiter_attaching: ["Conectando o limitador a {0}…", "Attaching the limiter to {0}…"], limiting: ["Limitando {0} em {1} FPS", "Limiting {0} to {1} fps"],
+  lim_anticheat: ["{0} tem anti-cheat ({1}): o limitador não entra", "{0} has anti-cheat ({1}): the limiter stays out"],
+  lim_elevated: ["{0} roda como administrador. Abra o FlowScale como administrador.", "{0} runs as administrator. Run FlowScale as administrator."],
+  lim_missing32: ["{0} é 32 bits e faltam flowscale32.exe e flowscale_hook32.dll", "{0} is 32-bit and flowscale32.exe / flowscale_hook32.dll are missing"],
+  lim_inject32: ["{0}: a injeção 32 bits falhou", "{0}: 32-bit injection failed"], lim_inject: ["{0}: não deu para injetar ({1})", "{0}: injection failed ({1})"],
+  lim_no_access: ["{0}: sem acesso ao processo", "{0}: no access to the process"], lim_ipc: ["Memória compartilhada indisponível", "Shared memory unavailable"], lim_error: ["{0}: {1}", "{0}: {1}"],
+  limiter_off: ["Limitador desligado", "Limiter off"], limiter_on: ["Limitador ligado", "Limiter on"], limiter_paused: ["Limitador pausado", "Limiter paused"],
+  osd_shown: ["Overlay visível", "Overlay shown"], osd_hidden: ["Overlay oculto", "Overlay hidden"],
+  hotkey_taken: ["Outro app já usa o atalho de {0}. Escolha outro em Ajustes → Atalhos.", "Another app already uses the {0} shortcut. Pick another in Settings → Shortcuts."],
+  vk_error: ["Layer Vulkan: {0}", "Vulkan layer: {0}"], rtss_ok: ["FlowScale excluído no RivaTuner", "FlowScale excluded in RivaTuner"], rtss_unchanged: ["RivaTuner não foi alterado", "RivaTuner was not changed"],
+  games_found: ["{0} jogos encontrados", "{0} games found"], sr_installed: ["FlowScale SR instalado em {0}. Escolha {1} no jogo.", "FlowScale SR installed in {0}. Pick {1} in the game."],
+  sr_restored: ["{0} voltou aos arquivos originais", "{0} is back to its original files"], game_error: ["{0}: {1}", "{0}: {1}"], game_folder_bad: ["Pasta inválida: {0}", "Not a folder: {0}"],
+  sr_applied: ["Ajustes gravados em {0} pasta(s). F9 recarrega com o jogo aberto.", "Settings written to {0} folder(s). F9 reloads them in a running game."],
+  following: ["{0} fechou a janela; esperando ela voltar…", "{0} closed its window; waiting for it to come back…"],
+  gone: ["O jogo fechou a janela", "The game closed its window"],
+};
+STATUS.ready = T.ready;
+// Spanish. Anything missing falls back to English.
+const ES = {
+  T: {
+    "tab.home": "Inicio", "tab.settings": "Ajustes", "tab.ingame": "En el juego", "title.home": "Inicio", "title.settings": "Ajustes", "title.ingame": "Escalado en el juego",
+    "profile.add": "Nuevo perfil de juego", "profile.remove": "Eliminar perfil", "profile.default": "Predeterminado (todos los juegos)",
+    "home.scale": "Escalado y generación de fotogramas", "home.limit": "Limitador de FPS",
+    "scale.idle": "Elige la ventana del juego. Se queda como está; FlowScale dibuja encima.", "scale.on": "Activo en <b>{0}</b>", "scale.start": "Elegir ventana", "scale.stop": "Detener",
+    "lim.idle": "Limita los FPS desde dentro del juego, con precisión de 0,01 FPS.", "lim.on": "Limitando <b>{0}</b> a {1} FPS", "lim.paused": "<b>{0}</b> en pausa", "lim.wait": "Conectado a <b>{0}</b>, esperando fotogramas",
+    "lim.busy": "Conectando…", "lim.start": "Limitar un juego", "lim.stop": "Detener",
+    "chip.full": "Pantalla completa", "chip.win": "En ventana", "chip.nofg": "Sin generación",
+    "smooth.title": "Ritmo perfecto para la generación de fotogramas",
+    "smooth.body": "Limita el juego a frecuencia del monitor ÷ multiplicador y usa VSync: cada fotograma de salida dura exactamente una actualización. Medido: σ 0,21 ms en vez de 1,3 ms.",
+    "smooth.apply": "Aplicar", "rtss.title": "RivaTuner está dibujando un segundo contador",
+    "rtss.body": "RTSS también se inyecta en la salida de FlowScale. Excluir FlowScale en RTSS deja solo el contador del juego. Pide permiso de administrador una vez.", "rtss.fix": "Excluir en RTSS",
+    "graph.title": "Tiempo de fotograma", "graph.game": "Juego", "graph.out": "Salida",
+    "graph.idle": "Escala una ventana o limita un juego para ver el ritmo de los fotogramas en vivo.", "graph.live": "Más bajo y más plano es mejor. La línea discontinua es el objetivo del limitador.",
+    "m.fps": "FPS del juego", "m.low1": "1% mínimo", "m.sd": "Variación (σ)", "m.cap": "Límite", "m.outfps": "FPS de salida", "m.captured": "Capturado", "m.ratio": "Generación",
+    "quick.title": "Ajustes rápidos", "quick.sub": "Del perfil seleccionado. Los cambios se aplican la próxima vez que escales.", "quick.all": "Todos los ajustes",
+    "search": "Buscar ajuste", "nothing": "Ningún ajuste coincide.", "close": "Cerrar", "pick.scale": "¿Qué ventana?", "pick.limit": "¿Qué juego limitar?", "pick.profile": "¿Para qué juego crear el perfil?",
+    "pick.search": "Filtrar por nombre", "pick.loading": "Buscando ventanas…", "pick.none": "No se encontraron ventanas. Abre el juego primero.",
+    "pick.foot.scale": "Consejo: con el juego en primer plano, {0} lo escala directamente.", "pick.foot.limit": "Usa el límite del perfil del juego, o el predeterminado.",
+    "pick.foot.profile": "El nuevo perfil empieza como copia del seleccionado.", "pick.countdown": "O elige en 4 segundos",
+    "hk.listen": "Pulsa el atajo…", "hk.none": "Ninguno", "hk.clear": "Borrar", "sr.title": "FlowScale SR",
+    "sr.sub": "Escalador temporal que corre dentro del juego, con la profundidad, los vectores de movimiento y el jitter del propio juego. Ocupa el lugar de FSR 3.1 o XeSS: tras instalarlo, elige esa opción en el juego.",
+    "sr.apply": "Guardar en los juegos instalados", "sr.f9": "F9 los recarga con el juego abierto.", "sr.idle": "No se está ejecutando en ningún juego.",
+    "sr.live": "Ejecutándose en {0} · entrada {1} · {2} → {3} · {4}", "sr.measuring": "midiendo",
+    "games.title": "Juegos", "games.sub": "Steam, Epic, GOG, Xbox, Heroic y carpetas que añadas.", "games.find": "Buscar juegos", "games.busy": "Buscando…",
+    "games.add": "Añadir carpeta", "games.path": "Ruta de la carpeta de un juego", "games.empty": "Pulsa Buscar juegos.", "games.install": "Instalar", "games.restore": "Restaurar", "games.folder": "Abrir carpeta",
+    "games.ac": "anti-cheat: no se modificará", "games.need": "necesita FSR 3.1 o XeSS", "games.nodll": "sin DLL de escalado",
+    "games.safe": "Todo lo reemplazado se guarda en la carpeta flowscale-backup del juego y vuelve con Restaurar. Los juegos con anti-cheat nunca se modifican.",
+    "elevate": "Ejecutar como administrador", "folder": "Abrir carpeta de ajustes y registros", "reset": "Restablecer este perfil",
+    "vk": "Compatibilidad con Vulkan", "vk.h": "Registra una capa Vulkan solo para tu usuario. Queda inactiva en todo proceso que FlowScale no esté limitando. Reinicia el juego tras activarla.",
+    "windowed.note": "En ventana, la imagen queda 1:1 sobre el juego. El escalado y el cursor se aplican en Pantalla completa; la nitidez sigue aplicándose.",
+    ready: "Listo", "sec.profile": "Este perfil", "match": "Se aplica a",
+    "match.h": "Además de su propio exe: otros ejecutables, rutas completas o títulos de ventana, separados por punto y coma. Acepta * y ?.", "match.ph": "juego.exe; *Dolphin*; C:\\Juegos\\*",
+    "off": "desactivado", "game": "juego",
+  },
+  S: {
+    output: ["Salida", "Dónde aparece la imagen final y cómo se presenta."], scaling: ["Escalado", "Cómo se amplía la ventana capturada al monitor."],
+    framegen: ["Generación de fotogramas", "Fotogramas intermedios por flujo óptico. Funciona en cualquier ventana, sin soporte del juego."],
+    limiter: ["Limitador", "Controla el ritmo del juego desde su bucle de renderizado. D3D9, D3D11, D3D12, OpenGL y Vulkan. Los juegos con anti-cheat se omiten."],
+    osd: ["Overlay en el juego", "El panel de FPS. Se dibuja sobre la imagen escalada, o sobre la ventana del juego cuando solo el limitador está activo."],
+    cursor: ["Cursor y recorte", "Se aplican en Pantalla completa."], auto: ["Automatización", "Comportamiento automático de este perfil."],
+    keys: ["Atajos", "Funcionan en cualquier lugar, también dentro del juego. Haz clic y pulsa la combinación."], app: ["App", ""],
+  },
+  L: {
+    output: ["Modo", "En ventana cubre solo la ventana del juego: no necesita pantalla completa, el escritorio sigue visible y el ratón funciona normal."],
+    sync: ["Sincronización", "VSync da el ritmo más regular. Sin VSync tiene menos latencia."], max_latency: ["Fotogramas en cola", "1 es el menor retraso."],
+    hdr: ["HDR (scRGB)", "Solo con HDR activado en Windows."], capture: ["Captura", "Graphics Capture funciona con ventanas tapadas; Duplicación de pantalla y GDI son alternativas."],
+    gpu: ["Tarjeta gráfica", "Automático usa la que controla el monitor."], display: ["Monitor", ""], keep_unfocused: ["Seguir sin foco", "Mantiene la salida visible cuando otra ventana toma el foco."],
+    scaler: ["Escalador", "FSR 1 y NIS son los más nítidos para juegos; Anime4K para anime; xBR, Entero y Vecino para pixel art."], sharpness: ["Nitidez", "Afilado después del escalador."],
+    scale_mode: ["Tamaño", ""], factor: ["Factor", ""], fit: ["Proporción", ""],
+    resize: ["Reducir el juego antes", "Redimensiona la ventana del juego a pantalla ÷ factor antes de escalar."],
+    framegen: ["Generación", ""], multiplier: ["Multiplicador", "Salida = FPS del juego × multiplicador."], target: ["FPS objetivo", "Genera los fotogramas necesarios para llegar a esa tasa."],
+    quality: ["Calidad", "Rendimiento cuesta unos 4 ms en 1080p en una GTX 1650, con la misma calidad medida."], flow_scale: ["Resolución del flujo", "Fracción de la resolución usada para estimar el movimiento."],
+    ui_threshold: ["Protección del HUD", "Evita que textos e iconos estáticos se deformen."], limiter: ["Limitar este juego", "Activa el limitador cuando se usa este perfil."],
+    cap_mode: ["Límite", "Igualar a la generación = frecuencia del monitor ÷ multiplicador."], fps_cap: ["FPS", "Valor exacto, hasta 0,01."],
+    latency_mode: ["Espera", "Baja latencia espera después de Present, antes de que el juego lea los controles."],
+    draw_cursor: ["Dibujar el cursor", ""], scale_cursor: ["Escalar el cursor", ""], clip_cursor: ["Mantener el cursor en el juego", ""],
+    cursor_speed: ["Ajustar la velocidad del ratón", "Compensa la ampliación. Vuelve a la normalidad al detener."],
+    crop_l: ["Recortar a la izquierda", ""], crop_t: ["Recortar arriba", ""], crop_r: ["Recortar a la derecha", ""], crop_b: ["Recortar abajo", ""],
+    auto: ["Escalar al enfocar el juego", "Solo en perfiles de juego."], delay: ["Retraso", ""],
+    osd: ["Mostrar overlay", ""], osd_detail: ["Detalle", "Completo añade el gráfico de tiempo de fotograma."], osd_pos: ["Posición", ""], osd_theme: ["Tema", ""],
+    osd_scale: ["Tamaño", ""], osd_opacity: ["Opacidad", ""], osd_limiter: ["También solo con el limitador", "Muestra el panel sobre el juego aunque no escales. Funciona con juegos en ventana o sin bordes."],
+    hk_scale: ["Escalar / detener", ""], hk_limit: ["Pausar el limitador", "Sin limitador activo, limita el juego en primer plano."], hk_osd: ["Mostrar / ocultar overlay", ""],
+    auto_detect: ["Detectar juegos solo", "Activa el limitador en los juegos que toman el foco cuando el perfil predeterminado lo tiene activado."],
+    close_to_tray: ["Minimizar y cerrar a la bandeja", ""], start_minimized: ["Iniciar minimizado", ""], autostart: ["Iniciar con Windows", ""],
+    sr_sharpness: ["Nitidez", "0,60 deja la imagen como se reconstruyó."], sr_weight: ["Peso del fotograma", "Menor es más estable, mayor es más nítido en movimiento."],
+    sr_sharpen_mode: ["Filtro de nitidez", ""], sr_fp16: ["Precisión", "FP16 ayuda a algunas GPU, no a todas."], sr_ratio: ["Escala de render forzada", "En \"juego\" se usan los modos de calidad del propio juego."],
+    sr_anti_shimmer: ["Anti-parpadeo", "Calma el dentado que parpadea en cada fotograma."], sr_relight: ["Reiluminación (experimental)", "Oclusión ambiental en pantalla y un rebote de luz antes del escalado."],
+    sr_compare: ["Tecla de comparación", "F11 muestra FlowScale SR a la izquierda y el original a la derecha."], sr_indicator: ["Indicador", "Una marca pequeña en la esquina mientras FlowScale SR está activo."],
+    queue: ["Cola de captura", "0 usa siempre el fotograma más nuevo (menor latencia). 1 y 2 mantienen fotogramas en cola y son más estables con FPS inestables o la GPU al límite."],
+    gsync: ["Compatibilidad con G-SYNC", "Tarjetas NVIDIA: permite G-SYNC en la ventana de FlowScale con un perfil de controlador solo para él. Desactivarlo lo deshace. FreeSync y Adaptive Sync no lo necesitan."],
+    follow_window: ["Seguir la ventana del juego", "Si el juego cierra y vuelve a abrir su ventana (cambio de modo, launcher → juego), el escalado se reanuda solo."],
+    fsr_mode: ["Variante de FSR", "Rendimiento hace un análisis de bordes por píxel en vez de cuatro; bueno para GPU modestas."],
+    a4k_size: ["Red de Anime4K", "Las redes más grandes reconstruyen mejor y cuestan más. Salida 720p en una GTX 1650: S 0,4 ms, M 1 ms, L 1,8 ms, VL 2,8 ms, UL 5,2 ms."],
+    sharpen_filter: ["Filtro de nitidez", "RCAS es el de FSR; CAS es el de AMD, más suave en texturas finas."],
+    fg_min_fps: ["FPS mínimo para generar", "Por debajo solo se muestran fotogramas reales, para no emborronar en tirones. 0 lo desactiva."],
+    dedup: ["Omitir fotogramas repetidos", "Emuladores y juegos a 30 que muestran cada fotograma dos veces: interpola solo entre fotogramas nuevos."],
+    hide_cursor: ["Ocultar el cursor", "Oculta el cursor mientras escala; útil en juegos con mando."], osd_color: ["Color de acento", ""], osd_font: ["Fuente", ""],
+    osd_x: ["Desplazamiento horizontal", ""], osd_y: ["Desplazamiento vertical", ""],
+    vrs: ["Escalado por regiones (VRS)", "Vuelve a escalar solo las partes del fotograma que cambiaron. Alivia mucho la GPU con contenido casi estático; en escenas con mucho movimiento la ganancia desaparece. Sin generación de fotogramas."],
+    start_admin: ["Abrir siempre como administrador", "Pide permiso al abrir. Necesario para limitar juegos que corren como administrador."], theme: ["Tema", ""],
+  },
+  O: {
+    output: ["Pantalla completa", "En ventana"], sync: ["Tearing", "Sin VSync", "VSync", "Medio VSync"], capture: ["Graphics Capture", "Duplicación de pantalla", "GDI"],
+    scaler: ["Desactivado (1:1)", "Vecino más cercano", "Entero", "Bilineal", "Bilineal nítido", "Bicúbico", "Lanczos 3", "FSR 1", "Línea (anime)", "NVIDIA NIS", "Snapdragon GSR", "xBR (pixel art)", "Anime4K"],
+    scale_mode: ["Ajustar a la pantalla", "Factor"], fit: ["Mantener", "Estirar"], framegen: ["Desactivada", "Multiplicador", "FPS objetivo"],
+    quality: ["Rendimiento", "Equilibrado", "Calidad"], cap_mode: ["Personalizado", "Frecuencia del monitor", "VRR (−3%)", "Mitad de la frecuencia", "Igualar a la generación"],
+    latency_mode: ["Suave", "Baja latencia"], osd_detail: ["Compacto", "Normal", "Completo"], osd_theme: ["Oscuro", "Claro"], sr_fp16: ["FP32", "FP16", "Solo AMD"],
+    fsr_mode: ["Calidad", "Rendimiento"], osd_color: ["Azul", "Verde", "Ámbar", "Rosa", "Cian", "Neutro"], theme: ["Sistema", "Claro", "Oscuro"],
+  },
+  ST: {
+    scaling: "Escalando: {0}", stopped: "Escalado detenido", error: "Error: {0}", countdown: "Cambia al juego… {0}", autoscale: "Escalando {0} en {1} s", not_a_game: "{0} no parece un juego",
+    limiter_attaching: "Conectando el limitador a {0}…", limiting: "Limitando {0} a {1} FPS", lim_anticheat: "{0} tiene anti-cheat ({1}): el limitador no entra",
+    lim_elevated: "{0} corre como administrador. Ejecuta FlowScale como administrador.", lim_missing32: "{0} es de 32 bits y faltan flowscale32.exe y flowscale_hook32.dll",
+    lim_inject32: "{0}: falló la inyección de 32 bits", lim_inject: "{0}: no se pudo inyectar ({1})", lim_no_access: "{0}: sin acceso al proceso", lim_ipc: "Memoria compartida no disponible",
+    limiter_off: "Limitador desactivado", limiter_on: "Limitador activado", limiter_paused: "Limitador en pausa", osd_shown: "Overlay visible", osd_hidden: "Overlay oculto",
+    hotkey_taken: "Otra app ya usa el atajo de {0}. Elige otro en Ajustes → Atajos.", vk_error: "Capa Vulkan: {0}", rtss_ok: "FlowScale excluido en RivaTuner", rtss_unchanged: "RivaTuner no se modificó",
+    games_found: "{0} juegos encontrados", sr_installed: "FlowScale SR instalado en {0}. Elige {1} en el juego.", sr_restored: "{0} volvió a sus archivos originales",
+    game_folder_bad: "Carpeta no válida: {0}", sr_applied: "Ajustes guardados en {0} carpeta(s). F9 los recarga con el juego abierto.", ready: "Listo",
+    following: "{0} cerró su ventana; esperando a que vuelva…", gone: "El juego cerró su ventana",
+  },
+};
+const HK_NAMES = { hk_scale: ["escalar", "scale"], hk_limit: ["limitador", "limiter"], hk_osd: ["overlay", "overlay"] };
+
+let lang = "pt";
+try { lang = localStorage.getItem("lang") || ""; } catch {}
+// li(): index into the [pt, en] arrays; Spanish reads ES first and falls back to English.
+const li = () => lang === "pt" ? 0 : 1;
+const isES = () => lang === "es";
+const fill = (s, a = []) => String(s).replace(/\{(\d)\}/g, (_, i) => a[+i] ?? "");
+const t = (k, ...a) => fill((isES() && ES.T[k]) || (T[k] || [k, k])[li()], a);
+const lbl = k => (isES() && ES.L[k]?.[0]) || (L[k] || [k, k])[li()];
+const hint = k => isES() && ES.L[k] ? ES.L[k][1] : (L[k] || [])[li() + 2] || "";
+const secName = g => isES() && ES.S[g] ? ES.S[g][0] : S_[g][li()];
+const secHint = g => isES() && ES.S[g] ? ES.S[g][1] : S_[g][li() + 2];
+const LIST = { auto: ["Automático", "Auto", "Automático"], same: ["Mesmo do jogo", "Same as game", "El mismo del juego"], display: ["Monitor ", "Display ", "Monitor "] };
+const lx = () => isES() ? 2 : li();
+const optsOf = o => o.kind === "list" ? o.options.map((x, i) => i === 0 ? LIST[x === "auto" ? "auto" : "same"][lx()] : (o.key === "display" ? LIST.display[lx()] + x : x))
+  : (isES() && ES.O[o.key]) || (O[o.key] || [[], []])[li()];
+function status(code, args = []) {
+  const s = (isES() && ES.ST[code]) || STATUS[code]?.[li()];
+  return s ? fill(s, args.map(esc)) : esc([code, ...args].filter(Boolean).join(" "));
+}
+function i18n() {
+  document.documentElement.lang = isES() ? "es" : li() ? "en" : "pt-BR";
+  $$("[data-t]").forEach(e => e.textContent = t(e.dataset.t));
+  $("#search").placeholder = t("search"); $("#pickerSearch").placeholder = t("pick.search"); $("#gamePath").placeholder = t("games.path");
+}
+
+// ---------------------------------------------------------------- state & formatting
+const S = { opts: [], byKey: {}, values: {}, app: {}, profiles: [], current: "Default", scaling: false };
+const SECTIONS = ["output", "scaling", "framegen", "limiter", "osd", "cursor", "auto", "keys", "app"];
+const QUICK = ["output", "scaler", "framegen", "multiplier", "target", "limiter", "cap_mode", "osd"];
+const valOf = k => (S.byKey[k]?.app ? S.app : S.values)[k] ?? S.byKey[k]?.def ?? 0;
+function fmt(o, v) {
+  const k = o.key, pct = ["sharpness", "flow_scale", "ui_threshold", "osd_scale", "osd_opacity"];
+  if (k === "fps_cap") return (v / 1000).toFixed(2);
+  if (k === "factor") return (v / 100).toFixed(2) + "×";
+  if (k === "multiplier") return v + "×";
+  if (k === "target") return v + " fps";
+  if (pct.includes(k)) return v + "%";
+  if (k === "sr_sharpness" || k === "sr_weight") return (v / 100).toFixed(2);
+  if (k === "sr_ratio") return v ? (v / 100).toFixed(1) + "×" : t("game");
+  if (k === "delay") return v + " s";
+  if (k === "osd_x" || k === "osd_y") return v + " px";
+  if (k === "fg_min_fps") return v ? v + " fps" : t("off");
+  if (k.startsWith("crop_")) return v + " px";
+  return String(v);
+}
+function hkText(v) {
+  if (!(v & 0xff)) return t("hk.none");
+  const m = v >> 16, vk = v & 0xff, p = [];
+  if (m & 2) p.push("Ctrl"); if (m & 1) p.push("Alt"); if (m & 4) p.push("Shift"); if (m & 8) p.push("Win");
+  const named = { 0x20: "Space", 0x70: "F1", 0x2D: "Insert", 0x24: "Home", 0x21: "PgUp", 0x22: "PgDn", 0x23: "End", 0x2E: "Del", 0xC0: "`" };
+  p.push(vk >= 0x70 && vk <= 0x87 ? "F" + (vk - 0x6F) : named[vk] || (vk >= 0x60 && vk <= 0x69 ? "Num " + (vk - 0x60) : String.fromCharCode(vk)));
+  return p.join(" + ");
+}
+function relevant(k) {
+  const v = k2 => valOf(k2), win = v("output") === 1;
+  switch (k) {
+    case "factor": return v("scale_mode") === 1 && !win;
+    case "scale_mode": case "fit": case "resize": case "scaler": return !win || k === "scaler";
+    case "sharpness": return [5, 6, 7, 9, 10, 12].includes(v("scaler"));
+    case "fsr_mode": return v("scaler") === 7;
+    case "a4k_size": return v("scaler") === 12;
+    case "sharpen_filter": return v("scaler") === 7 || ([5, 6, 10, 12].includes(v("scaler")) && v("sharpness") > 0);
+    case "queue": return v("capture") === 0;
+    case "vrs": return v("framegen") === 0 && ![9, 12].includes(v("scaler"));
+    case "gsync": return !!S.gsync_supported;
+    case "fg_min_fps": case "dedup": return v("framegen") > 0;
+    case "multiplier": return v("framegen") === 1;
+    case "target": return v("framegen") === 2;
+    case "quality": case "flow_scale": case "ui_threshold": return v("framegen") > 0;
+    case "cap_mode": case "latency_mode": return v("limiter") === 1;
+    case "fps_cap": return v("limiter") === 1 && v("cap_mode") === 0;
+    case "display": return !win;
+    case "draw_cursor": case "clip_cursor": case "cursor_speed": return !win;
+    case "scale_cursor": return !win && v("draw_cursor") === 1;
+    case "delay": return v("auto") === 1;
+    case "osd_detail": case "osd_pos": case "osd_theme": case "osd_scale": case "osd_opacity": case "osd_limiter":
+    case "osd_color": case "osd_font": case "osd_x": case "osd_y": return v("osd") === 1;
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------- controls
+function control(o) {
+  const v = valOf(o.key), h = hint(o.key);
+  const head = `<div><div class="lbl">${esc(lbl(o.key))}</div>${h ? `<div class="hint">${esc(h)}</div>` : ""}</div>`;
+  let c;
+  if (o.kind === "toggle") return `<div class="row toggle" data-key="${o.key}">${head}<div class="val"><input type="checkbox" class="switch" aria-label="${esc(lbl(o.key))}" ${v ? "checked" : ""}></div></div>`;
+  if (o.kind === "hotkey") c = `<button class="kbd" data-hk>${esc(hkText(v))}</button>`;
+  else if (o.kind === "choice" || o.kind === "list") {
+    const names = optsOf(o);
+    c = names.length <= 4 && o.kind === "choice" && names.join("").length <= 28
+      ? `<div class="seg" role="radiogroup" style="flex:1">${names.map((n, i) => `<button role="radio" aria-checked="${i === v}" data-v="${i}">${esc(n)}</button>`).join("")}</div>`
+      : `<select class="field" style="flex:1">${names.map((n, i) => `<option value="${i}" ${i === v ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>`;
+  } else {
+    const p = (v - o.min) / (o.max - o.min) * 100;
+    c = `<input type="range" class="range" min="${o.min}" max="${o.max}" step="${o.step}" value="${v}" style="--p:${p}%" aria-label="${esc(lbl(o.key))}">`
+      + (o.key === "fps_cap" ? `<input class="field numin num" inputmode="decimal" value="${(v / 1000).toFixed(2)}" aria-label="FPS">` : `<output>${esc(fmt(o, v))}</output>`);
+  }
+  return `<div class="row" data-key="${o.key}">${head}<div class="val">${c}</div></div>`;
+}
+const pending = {};
+function setVal(k, v, now) {
+  const o = S.byKey[k]; if (!o) return;
+  (o.app ? S.app : S.values)[k] = v;
+  if (k === "theme") applyTheme();
+  clearTimeout(pending[k]);
+  const go = () => send({ t: "set", key: k, value: v });
+  now ? go() : (pending[k] = setTimeout(go, 90));
+}
+document.addEventListener("input", e => {
+  const row = e.target.closest(".row[data-key]"); if (!row) return;
+  const o = S.byKey[row.dataset.key];
+  if (e.target.type === "range") {
+    const v = +e.target.value; e.target.style.setProperty("--p", (v - o.min) / (o.max - o.min) * 100 + "%");
+    const out = row.querySelector("output"); if (out) out.textContent = fmt(o, v);
+    const num = row.querySelector(".numin"); if (num) num.value = (v / 1000).toFixed(2);
+    setVal(o.key, v);
+  }
+});
+document.addEventListener("change", e => {
+  const row = e.target.closest(".row[data-key]"); if (!row) return;
+  const k = row.dataset.key;
+  if (e.target.type === "checkbox") setVal(k, e.target.checked ? 1 : 0, true);
+  else if (e.target.tagName === "SELECT") setVal(k, +e.target.value, true);
+  else if (e.target.classList.contains("numin")) { const f = parseFloat(e.target.value.replace(",", ".")); if (f > 0) setVal(k, Math.round(Math.min(500, Math.max(10, f)) * 1000), true); }
+  else if (e.target.type === "range") { setVal(k, +e.target.value, true); }
+  else return;
+  renderAll();
+});
+document.addEventListener("click", e => {
+  const b = e.target.closest(".seg button[data-v]");
+  if (b) { const k = b.closest(".row").dataset.key; setVal(k, +b.dataset.v, true); renderAll(); return; }
+  const hk = e.target.closest("[data-hk]"); if (hk) listenHotkey(hk);
+  const g = e.target.closest("[data-go]"); if (g) go(g.dataset.go);
+});
+// Shortcut capture is tracked by setting key, not by element: re-renders replace the button.
+let listening = null;
+const hkButton = k => $(`.page:not(.hidden) .row[data-key="${k}"] [data-hk]`);
+function stopListening() { if (!listening) return; const b = hkButton(listening); listening = null; if (b) { b.dataset.listen = "false"; b.textContent = hkText(valOf(b.closest(".row").dataset.key)); } }
+function listenHotkey(btn) {
+  stopListening();
+  listening = btn.closest(".row").dataset.key; btn.dataset.listen = "true"; btn.textContent = t("hk.listen");
+}
+document.addEventListener("pointerdown", e => { if (listening && !e.target.closest("[data-hk]")) stopListening(); }, true);
+addEventListener("blur", stopListening);
+document.addEventListener("keydown", e => {
+  if (!listening) return;
+  e.preventDefault();
+  const k = listening;
+  if (["Control", "Alt", "Shift", "Meta"].includes(e.key)) return;
+  let v = valOf(k);
+  if (e.key === "Escape") {} else if (e.key === "Backspace" || e.key === "Delete") v = 0;
+  else {
+    const m = (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.shiftKey ? 4 : 0) | (e.metaKey ? 8 : 0);
+    if (!m && !(e.keyCode >= 0x70 && e.keyCode <= 0x87)) return; // plain letters would steal typing; F-keys may stand alone
+    v = (m << 16) | (e.keyCode & 0xff);
+  }
+  listening = null;
+  setVal(k, v, true); renderAll(); hkButton(k)?.focus();
+}, true);
+
+// ---------------------------------------------------------------- pages
+const QS = "[data-tab]";
+function go(id) {
+  $$(".page").forEach(p => p.classList.toggle("hidden", p.dataset.page !== id));
+  $$(QS).forEach(b => b.setAttribute("aria-current", b.dataset.tab === id ? "page" : "false"));
+  $("#pageTitle").textContent = t("title." + id);
+  const prof = id !== "ingame"; $("#profile").classList.toggle("hidden", !prof); $("#btnAddProfile").classList.toggle("hidden", !prof); $("#btnRemoveProfile").classList.toggle("hidden", !prof || S.current === "Default");
+  try { localStorage.setItem("page", id); } catch {}
+  if (id === "home") requestAnimationFrame(sizeGraph);
+}
+$$(QS).forEach(b => b.addEventListener("click", () => go(b.dataset.tab)));
+
+function renderSettings() {
+  const q = $("#search").value.trim().toLowerCase();
+  const match = o => !q || (lbl(o.key) + " " + hint(o.key) + " " + (S_[o.group] || [""])[li()]).toLowerCase().includes(q);
+  let html = "", idx = "";
+  for (const g of SECTIONS) {
+    const items = S.opts.filter(o => o.group === g && relevant(o.key) && match(o));
+    const extra = g === "limiter" && match({ key: "vk", group: g }) ? "vk" : g === "app" ? "app" : "";
+    if (!items.length && !extra) continue;
+    const name = secName(g), desc = secHint(g);
+    let rows = items.map(control).join("");
+    if (extra === "vk") rows += `<div class="row toggle"><div><div class="lbl">${t("vk")}</div><div class="hint">${t("vk.h")}</div></div><div class="val"><input type="checkbox" class="switch" id="vkLayer" ${S.vulkan_layer ? "checked" : ""}></div></div>`;
+    let tail = "";
+    if (g === "scaling" && valOf("output") === 1) tail = `<div class="note">${t("windowed.note")}</div>`;
+    if (g === "app") tail = `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px"><button class="btn btn-line" id="btnFolder">${t("folder")}</button><button class="btn btn-line" id="btnReset">${t("reset")}</button>${S.elevated ? "" : `<button class="btn btn-line" id="btnAdmin">${t("elevate")}</button>`}</div>`;
+    html += `<section class="section" id="sec-${g}"><h2>${name}</h2>${desc ? `<p>${desc}</p>` : ""}${rows ? `<div class="rows">${rows}</div>` : ""}${tail}</section>`;
+    idx += `<a href="#sec-${g}" data-sec="${g}">${name}</a>`;
+  }
+  if (S.current !== "Default" && (!q || (t("match") + t("match.h")).toLowerCase().includes(q))) {
+    const prof = `<section class="section" id="sec-profile"><h2>${t("sec.profile")}: ${esc(short(S.current))}</h2><div class="rows"><div class="row"><div><div class="lbl">${t("match")}</div><div class="hint">${t("match.h")}</div></div>
+      <div class="val"><input id="matchInput" class="field" style="flex:1" spellcheck="false" placeholder="${esc(t("match.ph"))}" value="${esc(S.match || "")}"></div></div></div></section>`;
+    html = prof + html; idx = `<a href="#sec-profile" data-sec="profile">${t("sec.profile")}</a>` + idx;
+  }
+  $("#sections").innerHTML = html || `<p class="empty-search">${t("nothing")}</p>`;
+  $("#matchInput")?.addEventListener("change", e => { S.match = e.target.value; send({ t: "profile", op: "match", value: e.target.value }); });
+  $("#index").innerHTML = idx;
+  $("#vkLayer")?.addEventListener("change", e => send({ t: "vulkan_layer", value: e.target.checked }));
+  $("#btnFolder")?.addEventListener("click", () => send({ t: "open_folder" }));
+  $("#btnReset")?.addEventListener("click", () => send({ t: "profile", op: "reset" }));
+  $("#btnAdmin")?.addEventListener("click", () => send({ t: "elevate" }));
+  spyIndex();
+}
+$("#search").addEventListener("input", renderSettings);
+$("#index").addEventListener("click", e => {
+  const a = e.target.closest("a"); if (!a) return; e.preventDefault();
+  const sec = $("#" + a.getAttribute("href").slice(1)); // scroll only the page, never the shell
+  if (sec) $('[data-page="settings"]').scrollTo({ top: sec.offsetTop - 12, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+});
+function spyIndex() {
+  const page = $('[data-page="settings"]'), secs = $$("#sections .section");
+  let cur = secs[0]?.id; for (const s of secs) if (s.offsetTop - page.scrollTop < 120) cur = s.id;
+  $$("#index a").forEach(a => a.dataset.active = a.getAttribute("href") === "#" + cur);
+}
+$('[data-page="settings"]').addEventListener("scroll", spyIndex, { passive: true });
+
+function renderHome() {
+  $("#quick").innerHTML = QUICK.map(k => S.byKey[k]).filter(o => o && relevant(o.key)).map(control).join("");
+  const v = valOf, smooth = v("limiter") === 1 && v("cap_mode") === 4 && v("sync") === 2;
+  $("#smoothTip").classList.toggle("hidden", !(v("framegen") === 1 && !smooth));
+  const fgTxt = v("framegen") === 0 ? t("chip.nofg") : v("framegen") === 1 ? v("multiplier") + "×" : v("target") + " fps";
+  $("#scaleChips").innerHTML = [v("output") ? t("chip.win") : t("chip.full"), optsOf(S.byKey.scaler)[v("scaler")], fgTxt, optsOf(S.byKey.sync)[v("sync")]]
+    .map((c, i) => `<span class="chip ${i === 2 && v("framegen") ? "on" : ""}">${esc(c)}</span>`).join("");
+  $("#limChips").innerHTML = [optsOf(S.byKey.cap_mode)[v("cap_mode")] + (v("cap_mode") === 0 ? " · " + (v("fps_cap") / 1000).toFixed(2) : ""), optsOf(S.byKey.latency_mode)[v("latency_mode")]]
+    .map(c => `<span class="chip">${esc(c)}</span>`).join("");
+  $("#scaleKey").textContent = hkText(S.app.hk_scale ?? 0); $("#limKey").textContent = hkText(S.app.hk_limit ?? 0);
+}
+function renderIngame() {
+  $("#srRows").innerHTML = S.opts.filter(o => o.group === "sr").map(control).join("");
+}
+// Re-rendering replaces controls; put keyboard focus back on the same control so Tab order isn't lost.
+function renderAll() {
+  const a = document.activeElement, row = a?.closest?.(".row[data-key]"), page = a?.closest?.(".page")?.dataset.page;
+  const sel = row && (a.matches(".seg button") ? `[data-v="${a.dataset.v}"]` : a.matches("[data-hk]") ? "[data-hk]" : a.tagName.toLowerCase() + (a.type ? `[type="${a.type}"]` : ""));
+  renderHome(); renderSettings(); renderIngame();
+  if (sel) $(`[data-page="${page}"] .row[data-key="${row.dataset.key}"] ${sel}`)?.focus({ preventScroll: true });
+}
+
+// ---------------------------------------------------------------- state from the app
+const short = e => (e || "").replace(/\.exe$/i, "");
+function applyTheme() { document.documentElement.dataset.theme = ["system", "light", "dark"][S.app?.theme ?? 0] || "system"; dirty = true; }
+function onState(m) {
+  Object.assign(S, m);
+  applyTheme();
+  if (!lang) { lang = m.os_lang === "en" ? "en" : "pt"; $("#lang").value = lang; i18n(); }
+  $("#profile").innerHTML = m.profiles.map(p => `<option value="${esc(p)}" ${p === m.current ? "selected" : ""}>${esc(p === "Default" ? t("profile.default") : short(p))}</option>`).join("");
+  $("#btnRemoveProfile").classList.toggle("hidden", m.current === "Default" || $('[data-page="ingame"]:not(.hidden)') !== null);
+  $("#tileScale").dataset.on = m.scaling;
+  $("#scaleState").innerHTML = m.scaling ? t("scale.on", esc(short(m.scaling_exe))) : t("scale.idle");
+  $("#btnScale").textContent = m.scaling ? t("scale.stop") : t("scale.start");
+  $("#btnScale").className = "btn btn-lg " + (m.scaling ? "btn-stop" : "btn-primary");
+  const limOn = !!m.limiter_exe;
+  $("#tileLimit").dataset.on = limOn;
+  $("#btnLimit").textContent = m.limiter_busy ? t("lim.busy") : limOn ? t("lim.stop") : t("lim.start");
+  $("#btnLimit").disabled = !!m.limiter_busy;
+  $("#btnLimit").className = "btn btn-lg " + (limOn ? "btn-stop" : "btn-primary");
+  if (!limOn) $("#limState").textContent = t("lim.idle");
+  $("#rtssBox").classList.toggle("hidden", !m.rtss);
+  $("#keysHint").textContent = `${hkText(m.app.hk_scale ?? 0)} · ${hkText(m.app.hk_osd ?? 0)}`;
+  if (m.limiter_status?.code && !lastStatus) setStatus(m.limiter_status.code, m.limiter_status.args);
+  renderAll();
+}
+let lastStatus = "";
+function setStatus(code, args) { lastStatus = code; $("#status").innerHTML = status(code, args); }
+
+// ---------------------------------------------------------------- live telemetry
+const cv = $("#graph"), cx = cv.getContext("2d");
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { dirty = true; });
+const N = 480, gameBuf = [], outBuf = []; let capMs = 0, dirty = true;
+function sizeGraph() { const r = cv.getBoundingClientRect(); if (!r.width) return; cv.width = r.width * devicePixelRatio; cv.height = r.height * devicePixelRatio; dirty = true; }
+new ResizeObserver(sizeGraph).observe(cv);
+function push(buf, arr) { for (const x of arr) buf.push(x); if (buf.length > N) buf.splice(0, buf.length - N); dirty = true; }
+function draw() {
+  requestAnimationFrame(draw);
+  if (!dirty || $('[data-page="home"]').classList.contains("hidden")) return;
+  dirty = false;
+  const W = cv.width, H = cv.height, d = devicePixelRatio, padL = 44 * d, padR = 16 * d, padT = 12 * d, padB = 14 * d;
+  cx.clearRect(0, 0, W, H);
+  const all = gameBuf.concat(outBuf).sort((a, b) => a - b), p95 = all[Math.floor(all.length * .95)] || 16.7;
+  const top = Math.max(8, Math.min(100, Math.ceil(Math.max(p95 * 1.6, capMs * 1.4) / 4) * 4));
+  const y = v => H - padB - Math.min(v, top) / top * (H - padT - padB);
+  cx.font = `${11 * d}px "Segoe UI Variable Text", "Segoe UI"`; cx.textBaseline = "middle"; cx.textAlign = "right";
+  for (const g of [0, top / 4, top / 2, top * 3 / 4, top]) {
+    cx.strokeStyle = g ? css("--sunk") : css("--line-2"); cx.lineWidth = 1; cx.beginPath(); cx.moveTo(padL, Math.round(y(g)) + .5); cx.lineTo(W - padR, Math.round(y(g)) + .5); cx.stroke();
+    cx.fillStyle = css("--ink-3"); cx.fillText((g < 10 ? g.toFixed(1) : g.toFixed(0)) + " ms", padL - 8 * d, y(g));
+  }
+  if (capMs > 0) { cx.setLineDash([5 * d, 5 * d]); cx.strokeStyle = "#e08a00"; cx.globalAlpha = .55; cx.beginPath(); cx.moveTo(padL, y(capMs)); cx.lineTo(W - padR, y(capMs)); cx.stroke(); cx.setLineDash([]); cx.globalAlpha = 1; }
+  const line = (buf, color) => {
+    if (buf.length < 2) return;
+    const step = (W - padL - padR) / (N - 1), off = N - buf.length;
+    cx.strokeStyle = color; cx.lineWidth = 1.6 * d; cx.lineJoin = "round"; cx.beginPath();
+    buf.forEach((v, i) => { const X = padL + (off + i) * step, Y = y(v); i ? cx.lineTo(X, Y) : cx.moveTo(X, Y); });
+    cx.stroke();
+  };
+  line(outBuf, css("--accent")); line(gameBuf, css("--game"));
+}
+const n1 = v => v > 0 ? (v >= 100 ? v.toFixed(0) : v.toFixed(1)) : "—";
+const setm = (id, txt, unit) => { $(id).innerHTML = txt === "—" || !unit ? esc(txt) : `${esc(txt)}<small>${unit}</small>`; };
+function onTele(m) {
+  const L_ = m.lim || {}, O_ = m.scale || {}, R = m.sr || {};
+  if (L_.frames?.length) push(gameBuf, L_.frames); if (O_.frames?.length) push(outBuf, O_.frames);
+  capMs = L_.active && L_.enabled && L_.cap > 0 ? 1000 / L_.cap : 0;
+  const la = !!L_.active, oa = !!O_.active;
+  setm("#mLimFps", la ? n1(L_.fps) : "—"); setm("#mLimLow", la ? n1(L_.low1) : "—"); setm("#mLimSd", la ? L_.sd.toFixed(2) : "—", "ms"); setm("#mLimCap", la ? (L_.enabled ? L_.cap.toFixed(2) : t("lim.paused", "").replace(/<[^>]+>/g, "").trim()) : "—");
+  setm("#mOutFps", oa ? n1(O_.fps) : "—"); setm("#mRealFps", oa ? n1(O_.real_fps) : "—"); setm("#mRatio", oa ? O_.ratio.toFixed(2) : "—", "×"); setm("#mOutSd", oa ? O_.sd.toFixed(2) : "—", "ms");
+  $("#graphSub").textContent = la || oa ? t("graph.live") : t("graph.idle");
+  $("#statusDot").classList.toggle("on", la || oa);
+  if (S.limiter_exe) {
+    const ex = esc(short(L_.exe || S.limiter_exe));
+    $("#limState").innerHTML = !la ? t("lim.wait", ex) : L_.enabled ? t("lim.on", ex, L_.cap.toFixed(2)) + ` · ${esc(L_.api)}${L_.w ? ` · ${L_.w}×${L_.h}` : ""}` : t("lim.paused", ex);
+  }
+  $("#srLive").dataset.on = !!R.active; $("#srDot").classList.toggle("on", !!R.active);
+  $("#srLiveText").textContent = R.active ? t("sr.live", R.exe, R.api, `${R.rw}×${R.rh}`, `${R.ow}×${R.oh}`, R.gpu_ms > 0 ? R.gpu_ms.toFixed(2) + " ms GPU" : t("sr.measuring")) : t("sr.idle");
+}
+
+// ---------------------------------------------------------------- window picker
+let pickMode = "scale", pickList = [];
+function openPicker(mode) {
+  pickMode = mode;
+  $("#pickerTitle").textContent = t("pick." + mode);
+  $("#pickerFoot").textContent = t("pick.foot." + mode, hkText(S.app.hk_scale ?? 0));
+  $("#pickerSearch").value = ""; $("#pickerList").innerHTML = `<li class="pick muted">${t("pick.loading")}</li>`;
+  $("#picker").showModal(); $("#pickerSearch").focus(); send({ t: "windows" });
+}
+function renderPicks() {
+  const q = $("#pickerSearch").value.trim().toLowerCase();
+  const l = pickList.filter(w => !q || (w.exe + " " + w.title).toLowerCase().includes(q));
+  $("#pickerList").innerHTML = l.length ? l.map(w => `<li class="pick" tabindex="0" data-hwnd="${w.hwnd}" data-exe="${esc(w.exe)}"><b>${esc(short(w.exe))}</b><span>${esc(w.title)}</span></li>`).join("")
+    : `<li class="pick muted">${t("pick.none")}</li>`;
+}
+$("#pickerSearch").addEventListener("input", renderPicks);
+$("#pickerSearch").addEventListener("keydown", e => { if (e.key === "Enter") $("#pickerList [data-hwnd]")?.click(); });
+$("#picker").addEventListener("click", e => {
+  if (e.target.closest("[data-close]") || e.target === $("#picker")) { $("#picker").close(); return; }
+  const li_ = e.target.closest("[data-hwnd]"); if (!li_) return;
+  const hwnd = +li_.dataset.hwnd;
+  if (pickMode === "scale") send({ t: "scale", hwnd }); else if (pickMode === "limit") send({ t: "limit", hwnd }); else send({ t: "profile", op: "add", name: li_.dataset.exe });
+  $("#picker").close();
+});
+$("#picker").addEventListener("keydown", e => { if (e.key === "Enter" && e.target.matches("[data-hwnd]")) e.target.click(); });
+$("#btnScale").addEventListener("click", () => S.scaling ? send({ t: "scale" }) : openPicker("scale"));
+$("#btnLimit").addEventListener("click", () => S.limiter_exe ? send({ t: "limit", off: true }) : openPicker("limit"));
+$("#btnAddProfile").addEventListener("click", () => openPicker("profile"));
+$("#btnRemoveProfile").addEventListener("click", () => send({ t: "profile", op: "remove" }));
+$("#profile").addEventListener("change", e => send({ t: "profile", op: "select", name: e.target.value }));
+$("#btnRtss").addEventListener("click", () => send({ t: "rtss" }));
+$("#btnSmooth").addEventListener("click", () => { for (const [k, v] of [["limiter", 1], ["cap_mode", 4], ["sync", 2]]) setVal(k, v, true); renderAll(); });
+
+// ---------------------------------------------------------------- games
+function onGames(m) {
+  $("#btnGames").disabled = m.busy; $("#btnGames").textContent = m.busy ? t("games.busy") : t("games.find");
+  $("#games").innerHTML = m.list.length ? m.list.map(g => {
+    const tags = g.has.map(h => `<span class="chip">${esc(h)}</span>`).join("");
+    const st = g.state ? `<span class="chip on">${esc(g.state)}</span>` : "";
+    const btn = (op, label, cls) => `<button class="btn ${cls}" data-root="${esc(g.root)}" data-op="${op}" ${m.busy ? "disabled" : ""}>${t(label)}</button>`;
+    const act = g.anticheat ? `<span class="muted">${t("games.ac")}</span>` : g.state ? btn("restore", "games.restore", "btn-line") : g.direct ? btn("install", "games.install", "btn-primary") : `<span class="muted">${t("games.need")}</span>`;
+    return `<li><div style="min-width:0"><div class="name">${esc(g.name)} <span class="muted" style="font-weight:400">${esc(g.store)}</span></div><div class="meta">${st}${tags || `<span class="muted">${t("games.nodll")}</span>`}</div></div>
+      <div class="acts">${act}${btn("open", "games.folder", "btn-quiet")}</div></li>`;
+  }).join("") : `<li class="muted">${m.busy ? t("games.busy") : t("games.empty")}</li>`;
+}
+$("#games").addEventListener("click", e => { const b = e.target.closest("[data-op]"); if (b) send({ t: "game", root: b.dataset.root, op: b.dataset.op }); });
+$("#btnGames").addEventListener("click", () => send({ t: "games" }));
+$("#btnGameAdd").addEventListener("click", () => { const p = $("#gamePath").value.trim(); if (p) { send({ t: "game_add", path: p }); $("#gamePath").value = ""; } });
+$("#btnSrApply").addEventListener("click", () => send({ t: "sr_apply" }));
+
+// ---------------------------------------------------------------- wiring
+window.chrome?.webview?.addEventListener("message", e => {
+  const m = e.data;
+  if (m.t === "schema") { S.opts = m.opts; S.byKey = Object.fromEntries(m.opts.map(o => [o.key, o])); }
+  else if (m.t === "state") onState(m);
+  else if (m.t === "tele") onTele(m);
+  else if (m.t === "status") setStatus(m.code, m.args);
+  else if (m.t === "go") go(m.page);
+  else if (m.t === "games") onGames(m);
+  else if (m.t === "windows") { pickList = m.list; renderPicks(); }
+});
+$("#lang").addEventListener("change", e => { lang = e.target.value; try { localStorage.setItem("lang", lang); } catch {} i18n(); renderAll(); go(localStorage.getItem("page") || "home"); if (lastStatus === "ready") setStatus("ready"); });
+$("#lang").value = lang || "pt";
+i18n();
+$("#status").textContent = t("ready"); lastStatus = "";
+let start = "home"; try { start = localStorage.getItem("page") || start; } catch {}
+if (!["home", "settings", "ingame"].includes(start)) start = "home";
+go(start); draw(); send({ t: "ready" });
+</script>
+</body>
+</html>

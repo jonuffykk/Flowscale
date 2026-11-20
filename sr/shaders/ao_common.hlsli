@@ -1,0 +1,61 @@
+// Ditto Relight (experimental): ambient occlusion and global illumination (aoprep, aomain, aocompose - D3D12, render size),
+// after CORTAO (Circular Occluder Ray-Traced Ambient Occlusion, Daniel Isheden - MIT, licenses/LICENSE-cortao.txt):
+// the depth around each pixel sampled into circular occluders, a fixed set of rays across the hemisphere traced against
+// them - each ray blocked or not, a bit. The occlusion: the share of rays blocked. The GI (DittoSR's extension): each
+// ray takes the colour of the occluder that blocked it first - one bounce of what the screen shows, the occluders' own
+// light toward the pixel. Their own root constants (dittosr.cpp AoConstants), not common.hlsli's.
+
+cbuffer A : register(b0) {
+    float2 rs;            // render size
+    float2 rsRcp;
+    float tanX, tanY;     // tan(fov / 2) across and up
+    float zNear, zFar;    // the camera's planes (either order)
+    float inverted;       // 1: reversed-Z (1 near)
+    float frame;          // the frame, for the noise (0 - 1023)
+    float aoStrength;     // 0 - 1: the occlusion's darkening
+    float giStrength;     // 0 - 4: the bounce light added
+    float radiusWorld;    // the occluders' reach, view units (ini ao_radius; 0: the screen's cap alone)
+    float radiusScreen;   // ... at most this share of the screen's height (ini ao_screen)
+    float rays;           // the rays a pixel (4 - 32: one bit each)
+    float contact;        // how much more the rays the nearest occluders block darken (0 - 4)
+    float giDark;         // the bounce light x this where the pixel is dark (0 - 4; 1: the same everywhere)
+    float sCurve;         // the curve on the lights - the luma above the pivot (0 - 1; 0 off)
+    float pivot;          // ... 30 % of the brightness: 0.071 linear HDR (0.3 ^ 2.2), 0.3 [0, 1] colour
+    float temporal;       // the history's weight (temporal smoothing, 0 - 0.95; 0: off, or no valid history)
+    float spatial;        // the spatial filter's taps' spacing (1 - 2: x 2 pixels)
+    float axis;           // ... its axis this pass (0 x, 1 y)
+    float2 mvScale;       // the game's motion vectors -> uv (the previous uv = uv + mv x this; temporal smoothing)
+    float2 mvSize;        // ... their resolution
+    float aoPad1, aoPad2;
+};
+
+SamplerState linearClamp : register(s0);
+
+// the linear depth (view z) of a depth buffer value; 0: the sky (the far plane)
+float linDepth(float d) {
+    float n = min(zNear, zFar), f = max(zNear, zFar);
+    if (inverted > 0.5) return d <= 0.0 ? 0.0 : n * f / (n + d * (f - n));
+    return d >= 1.0 ? 0.0 : n * f / (f - d * (f - n));
+}
+
+// view space: x right, y up, z forward (the camera at 0)
+float3 viewPos(float2 uv, float z) { return float3((uv.x * 2.0 - 1.0) * tanX * z, (1.0 - uv.y * 2.0) * tanY * z, z); }
+float2 projUv(float3 p) { return float2(0.5 + 0.5 * p.x / (p.z * tanX), 0.5 - 0.5 * p.y / (p.z * tanY)); }
+
+// an orthonormal tangent and bitangent around n
+void basisOf(float3 n, out float3 t, out float3 b) {
+    float3 h = abs(n.z) < 0.999 ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
+    t = normalize(cross(h, n));
+    b = cross(n, t);
+}
+
+// the filter's taps' weight (FastGI's GeometryWeight): a tap's depth within max(0.02, 1.5 %) of the centre's, its normal's closeness (cos^4); 0 the sky
+float geoWeight(float dc, float dt, float3 nc, float3 nt) {
+    float wd = saturate(1.0 - abs(dc - dt) / max(0.02, dc * 0.015));
+    float wn = saturate(dot(nc, nt));
+    wn *= wn;
+    return dt > 0.00001 ? wd * wn * wn : 0.0;
+}
+
+// interleaved gradient noise (Jimenez 2014)
+float ign(float2 p) { return frac(52.9829189 * frac(dot(p, float2(0.06711056, 0.00583715)))); }

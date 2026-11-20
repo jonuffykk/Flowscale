@@ -1,0 +1,53 @@
+[workspace]
+members = [".", "sr"]
+
+[package]
+name = "flowscale"
+version = "2.0.0"
+edition = "2024"
+
+[lib]
+name = "flowscale_hook"
+path = "src/hook.rs"
+crate-type = ["cdylib"]
+
+[[bin]]
+name = "flowscale"
+path = "src/main.rs"
+
+[[bin]]
+name = "fs_testgame"
+path = "test/testgame.rs"
+
+[[bin]]
+name = "fs_vktest"
+path = "test/vktest.rs"
+
+[dependencies]
+serde_json = "1"
+webview2-com = "0.39"
+minhook = "0.9"
+ash = { version = "0.38", features = ["loaded"] }
+
+[dependencies.windows]
+version = "0.62"
+features = [
+  "Foundation", "Graphics", "Graphics_Capture", "Graphics_DirectX", "Graphics_DirectX_Direct3D11",
+  "Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_Xps", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11",
+  "Win32_Graphics_Direct3D12", "Win32_Graphics_Direct3D9", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common",
+  "Win32_Globalization", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm", "Win32_Graphics_OpenGL", "Win32_System_Com", "Win32_System_Diagnostics_Debug",
+  "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_Performance", "Win32_System_ProcessStatus",
+  "Win32_System_Registry", "Win32_System_Threading", "Win32_System_WinRT", "Win32_System_WinRT_Direct3D11",
+  "Win32_System_WinRT_Graphics_Capture", "Win32_UI_Accessibility", "Win32_UI_Controls", "Win32_UI_HiDpi",
+  "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging",
+]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[lints.rust]
+linker_messages = "allow"
