@@ -50,6 +50,56 @@ fn main() {
                     frames += 1;
                 }
             }
+            // Direct3D 8 and DirectDraw through raw COM vtables (the windows crate does not wrap them).
+            "d3d8" => {
+                let m = windows::Win32::System::LibraryLoader::LoadLibraryW(w!("d3d8.dll")).unwrap();
+                let create: unsafe extern "system" fn(u32) -> *mut std::ffi::c_void = std::mem::transmute(windows::Win32::System::LibraryLoader::GetProcAddress(m, windows::core::s!("Direct3DCreate8")).unwrap());
+                let d3d = create(220);
+                let vt = *(d3d as *const *const usize);
+                let mut mode = [0u32; 4];
+                let gadm: unsafe extern "system" fn(*mut std::ffi::c_void, u32, *mut u32) -> windows::core::HRESULT = std::mem::transmute(*vt.add(8));
+                let _ = gadm(d3d, 0, mode.as_mut_ptr());
+                #[repr(C)] struct Pp { w: u32, h: u32, format: u32, count: u32, ms: u32, swap: u32, hwnd: isize, windowed: i32, ads: i32, dsf: u32, flags: u32, refresh: u32, interval: u32 }
+                let mut pp = Pp { w: 640, h: 360, format: mode[3], count: 1, ms: 0, swap: 1, hwnd: h.0 as isize, windowed: 1, ads: 0, dsf: 0, flags: 0, refresh: 0, interval: 0 };
+                let cd: unsafe extern "system" fn(*mut std::ffi::c_void, u32, u32, HWND, u32, *mut Pp, *mut *mut std::ffi::c_void) -> windows::core::HRESULT = std::mem::transmute(*vt.add(15));
+                let mut dev = std::ptr::null_mut();
+                cd(d3d, 0, 1, h, 0x20, &mut pp, &mut dev).unwrap();
+                let dvt = *(dev as *const *const usize);
+                // IDirect3DDevice8::Clear is 36, Present is 15.
+                let clear: unsafe extern "system" fn(*mut std::ffi::c_void, u32, *const i32, u32, u32, f32, u32) -> windows::core::HRESULT = std::mem::transmute(*dvt.add(36));
+                let present: unsafe extern "system" fn(*mut std::ffi::c_void, *const u8, *const u8, HWND, *const u8) -> windows::core::HRESULT = std::mem::transmute(*dvt.add(15));
+                while pump() {
+                    let c = col(start.elapsed().as_secs_f32());
+                    let _ = clear(dev, 0, std::ptr::null(), 1, ((c[0] * 255.0) as u32) << 16 | 0x40 << 8 | (c[2] * 255.0) as u32, 1.0, 0);
+                    let _ = present(dev, std::ptr::null(), std::ptr::null(), HWND::default(), std::ptr::null());
+                    frames += 1;
+                }
+            }
+            "ddraw" => {
+                let m = windows::Win32::System::LibraryLoader::LoadLibraryW(w!("ddraw.dll")).unwrap();
+                let create: unsafe extern "system" fn(*const u8, *mut *mut std::ffi::c_void, *mut u8) -> windows::core::HRESULT = std::mem::transmute(windows::Win32::System::LibraryLoader::GetProcAddress(m, windows::core::s!("DirectDrawCreate")).unwrap());
+                let mut dd = std::ptr::null_mut(); create(std::ptr::null(), &mut dd, std::ptr::null_mut()).unwrap();
+                let vt = *(dd as *const *const usize);
+                let scl: unsafe extern "system" fn(*mut std::ffi::c_void, HWND, u32) -> windows::core::HRESULT = std::mem::transmute(*vt.add(20));
+                let _ = scl(dd, h, 8);
+                let cs: unsafe extern "system" fn(*mut std::ffi::c_void, *mut u8, *mut *mut std::ffi::c_void, *mut u8) -> windows::core::HRESULT = std::mem::transmute(*vt.add(6));
+                let (dsize, coff) = if cfg!(target_pointer_width = "64") { (120usize, 112usize) } else { (108, 104) };
+                let surf = |caps: u32, w: u32, ht: u32| { let mut d = [0u8; 120]; d[0..4].copy_from_slice(&(dsize as u32).to_le_bytes());
+                    let flags = if w > 0 { 1 | 2 | 4 } else { 1 }; d[4..8].copy_from_slice(&(flags as u32).to_le_bytes()); d[8..12].copy_from_slice(&ht.to_le_bytes()); d[12..16].copy_from_slice(&w.to_le_bytes());
+                    d[coff..coff + 4].copy_from_slice(&caps.to_le_bytes()); let mut s = std::ptr::null_mut(); cs(dd, d.as_mut_ptr(), &mut s, std::ptr::null_mut()).unwrap(); s };
+                let primary = surf(0x200, 0, 0);
+                let back = surf(0x40, 640, 360);
+                let sv = *(primary as *const *const usize);
+                // IDirectDrawSurface::Blt (5) of the off-screen image to the window's area of the primary surface.
+                let blt: unsafe extern "system" fn(*mut std::ffi::c_void, *const RECT, *mut std::ffi::c_void, *const RECT, u32, *const u8) -> windows::core::HRESULT = std::mem::transmute(*sv.add(5));
+                while pump() {
+                    let mut r = RECT::default(); let _ = GetClientRect(h, &mut r);
+                    let mut p = POINT::default(); let _ = ClientToScreen(h, &mut p);
+                    let dst = RECT { left: p.x, top: p.y, right: p.x + r.right, bottom: p.y + r.bottom };
+                    let _ = blt(primary, &dst, back, std::ptr::null(), 0x0100_0000, std::ptr::null());
+                    frames += 1;
+                }
+            }
             "gl" => {
                 let dc = GetDC(Some(h));
                 let pfd = PIXELFORMATDESCRIPTOR { nSize: size_of::<PIXELFORMATDESCRIPTOR>() as u16, nVersion: 1, dwFlags: PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER, iPixelType: PFD_TYPE_RGBA, cColorBits: 32, ..Default::default() };

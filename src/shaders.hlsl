@@ -291,9 +291,10 @@ float4 PS_Cas(float4 pos : SV_Position) : SV_Target {
 float4 PS_Rotate(float4 pos : SV_Position) : SV_Target {
     float2 uv = UV(pos), r = uv;
     // The duplicated image is the desktop turned clockwise by the rotation; sample it back upright.
-    if (g_i0.x == 2) r = float2(1 - uv.y, uv.x);
+    // (WebRTC's DXGI duplicator: ROTATE90 -> the panel surface turned 90 degrees clockwise is the desktop)
+    if (g_i0.x == 2) r = float2(uv.y, 1 - uv.x);
     else if (g_i0.x == 3) r = 1 - uv;
-    else if (g_i0.x == 4) r = float2(uv.y, 1 - uv.x);
+    else if (g_i0.x == 4) r = float2(1 - uv.y, uv.x);
     return float4(tSrc.SampleLevel(sPt, r, 0).rgb, 1);
 }
 

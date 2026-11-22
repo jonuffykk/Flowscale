@@ -19,6 +19,12 @@ const SHADERS: &[(&str, &str, &str, &[&str])] = &[
     ("aofilter", "aofilter.hlsl", "cs_6_0", &[]),
     ("aotemporal", "aotemporal.hlsl", "cs_6_0", &[]),
     ("aocompose", "aocompose.hlsl", "cs_6_0", &[]),
+    ("aomain16", "aomain.hlsl", "cs_6_0", &["AO_WG=16"]),
+    ("aomipall", "aomipall.hlsl", "cs_6_0", &[]),
+    ("aolut", "aolut.hlsl", "cs_6_0", &[]),
+    ("aocacao", "aocacao.hlsl", "cs_6_0", &[]),
+    ("aocacao2", "aocacao.hlsl", "cs_6_0", &["CACAO_FUSED=1"]),
+    ("aocurve", "aocurve.hlsl", "cs_6_0", &[]),
 ];
 
 const XESS_FORWARDS: &[&str] = &[

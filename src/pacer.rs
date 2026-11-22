@@ -108,6 +108,23 @@ impl FrameStats {
         let med = s[s.len() / 2];
         (v.iter().filter(|x| **x > med * 1.5).count() as u32, v.iter().filter(|x| **x > med * 2.0).count() as u32)
     }
+    /// Hitches at 1.5x / 2x / 3x / 4x the median frame time.
+    pub fn hitches_ext(&self) -> (u32, u32, u32, u32) {
+        if self.count < 8 { return (0, 0, 0, 0); }
+        let v = self.recent(self.count);
+        let mut s = v.clone(); s.sort_by(f32::total_cmp);
+        let med = s[s.len() / 2];
+        let c = |k: f32| v.iter().filter(|x| **x > med * k).count() as u32;
+        (c(1.5), c(2.0), c(3.0), c(4.0))
+    }
+    /// 95th / 99th percentile of |frame time - target| in ms.
+    pub fn errors(&self, target_ms: f32) -> (f32, f32) {
+        if self.count < 8 { return (0.0, 0.0); }
+        let mut e: Vec<f32> = self.recent(self.count).iter().map(|x| (x - target_ms).abs()).collect();
+        e.sort_by(f32::total_cmp);
+        let at = |p: f32| e[((e.len() as f32 * p) as usize).min(e.len() - 1)];
+        (at(0.95), at(0.99))
+    }
     pub fn summary(&self) -> (f32, f32, f32, f32) {
         if self.count < 2 { return (0.0, 0.0, 0.0, 0.0); }
         let v = self.recent(self.count);

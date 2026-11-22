@@ -13,17 +13,17 @@ const FFX_DIRECT: &[&str] = &["amd_fidelityfx_dx12.dll", "amd_fidelityfx_loader_
 const XESS: &str = "libxess.dll";
 const DETECT: &[(&str, &str)] = &[
     ("amd_fidelityfx_dx12.dll", "FSR 3.1"), ("amd_fidelityfx_loader_dx12.dll", "FSR 3.1+"), ("amd_fidelityfx_upscaler_dx12.dll", "FSR 4"),
-    ("amd_fidelityfx_vk.dll", "FSR 3.1 Vulkan"), ("ffx_fsr2_api_x64.dll", "FSR 2"), ("ffx_fsr2_api_dx12_x64.dll", "FSR 2"),
+    ("amd_fidelityfx_vk.dll", "FSR 3.1 Vulkan"), ("amd_fidelityfx_loader_vk.dll", "FSR 3.1+ Vulkan"), ("ffx_fsr2_api_x64.dll", "FSR 2"), ("ffx_fsr2_api_dx12_x64.dll", "FSR 2"),
     ("nvngx_dlss.dll", "DLSS"), ("nvngx_dlssg.dll", "DLSS FG"), ("libxess.dll", "XeSS"), ("sl.interposer.dll", "Streamline"),
 ];
 const ANTICHEAT: &[&str] = &["easyanticheat", "battleye", "beservice", "eac_launcher", "vgk", "faceit", "ricochet", "equ8", "anticheatexpert", "mhyprot"];
 
 #[derive(Clone)]
-pub struct Game { pub name: String, pub store: &'static str, pub root: PathBuf, pub exe_dir: PathBuf, pub has: Vec<String>, pub ffx: Vec<PathBuf>, pub xess: Vec<PathBuf>, pub anticheat: bool, pub state: String }
+pub struct Game { pub name: String, pub store: &'static str, pub root: PathBuf, pub exe_dir: PathBuf, pub has: Vec<String>, pub ffx: Vec<PathBuf>, pub xess: Vec<PathBuf>, pub opti: Vec<PathBuf>, pub anticheat: bool, pub state: String }
 impl Game {
     pub fn json(&self) -> Value {
         json!({"name": self.name, "store": self.store, "root": self.root.to_string_lossy(), "exe_dir": self.exe_dir.to_string_lossy(),
-               "has": self.has, "direct": !self.ffx.is_empty() || !self.xess.is_empty(), "anticheat": self.anticheat, "state": self.state})
+               "has": self.has, "direct": !self.ffx.is_empty() || !self.xess.is_empty() || !self.opti.is_empty(), "optiscaler": !self.opti.is_empty(), "anticheat": self.anticheat, "state": self.state})
     }
 }
 
@@ -144,6 +144,7 @@ pub fn inspect(name: String, store: &'static str, root: PathBuf) -> Game {
     let mut has: Vec<String> = vec![];
     let mut ffx = vec![];
     let mut xess = vec![];
+    let mut opti: Vec<PathBuf> = vec![];
     let mut exes: Vec<(PathBuf, u64, i32)> = vec![];
     let mut anticheat = false;
     let mut budget = 60_000;
@@ -153,6 +154,7 @@ pub fn inspect(name: String, store: &'static str, root: PathBuf) -> Game {
             if FFX_DIRECT.contains(&n) { ffx.push(p.to_path_buf()); }
             if n == XESS { xess.push(p.to_path_buf()); }
         }
+        if n == "optiscaler.ini" { if let Some(d) = p.parent() { opti.push(d.to_path_buf()); } }
         if ANTICHEAT.iter().any(|a| n.contains(a)) { anticheat = true; }
         if n.ends_with(".exe") && !["unins", "crash", "setup", "redist", "vc_redist", "dxsetup", "launcher", "uploader", "report", "helper", "dotnet", "installer", "eac"].iter().any(|x| n.contains(x)) {
             let sz = std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
@@ -165,7 +167,11 @@ pub fn inspect(name: String, store: &'static str, root: PathBuf) -> Game {
     let exe_dir = ffx.first().or(xess.first()).and_then(|p| p.parent()).map(|p| p.to_path_buf())
         .or_else(|| exes.first().and_then(|e| e.0.parent().map(|p| p.to_path_buf()))).unwrap_or_else(|| root.clone());
     let state = std::fs::read_to_string(root.join(BACKUP).join(MANIFEST)).ok().and_then(|t| t.lines().next().map(|l| l.trim_start_matches("mode\t").to_string())).unwrap_or_default();
-    Game { name, store, root, exe_dir, has, ffx, xess, anticheat, state }
+    // OptiScaler's own DLLs (its FSR / XeSS backends beside its ini, its custom providers) are not the game's.
+    let in_opti = |p: &PathBuf| opti.iter().any(|o| p.parent() == Some(o.as_path())) || (!opti.is_empty() && p.components().any(|c| c.as_os_str().eq_ignore_ascii_case("custom")));
+    ffx.retain(|p| !in_opti(p)); xess.retain(|p| !in_opti(p));
+    if !opti.is_empty() && !has.iter().any(|h| h == "OptiScaler") { has.push("OptiScaler".into()); }
+    Game { name, store, root, exe_dir, has, ffx, xess, opti, anticheat, state }
 }
 
 pub fn scan() -> Vec<Game> { candidates().into_iter().map(|(n, s, p)| inspect(n, s, p)).collect() }
@@ -187,10 +193,24 @@ fn sr_source() -> Result<PathBuf, String> {
     if p.exists() { Ok(p) } else { Err(format!("{SR_DLL} is missing next to flowscale.exe")) }
 }
 
+/// OptiScaler's main folder: [Libraries] OptiDllPath (default "OptiScaler", relative to its ini's folder) when it
+/// exists, else the ini's folder - where OptiScaler v10 looks for custom\<name>\ffx (its DirectX 12 providers).
+fn opti_main(dir: &Path) -> PathBuf {
+    let mut main = String::from("OptiScaler"); let mut sec = String::new();
+    for l in std::fs::read_to_string(dir.join("OptiScaler.ini")).unwrap_or_default().lines().map(str::trim) {
+        if l.starts_with('[') { sec = l.trim_matches(|c| c == '[' || c == ']').trim().to_lowercase(); continue; }
+        if let Some((k, v)) = l.split_once('=') { let v = v.trim().trim_matches('"'); if sec == "libraries" && k.trim().eq_ignore_ascii_case("OptiDllPath") && !v.is_empty() && !v.eq_ignore_ascii_case("auto") { main = v.to_string(); } }
+    }
+    let p = if Path::new(&main).is_absolute() { PathBuf::from(&main) } else { dir.join(&main) };
+    if p.is_dir() { p } else { dir.to_path_buf() }
+}
+
 pub fn write_sr_ini(dir: &Path, cfg: &SrConfig) -> std::io::Result<()> {
-    let mut s = String::from("; FlowScale SR (written by FlowScale; F9 reloads it in game)\r\n[sr]\r\nenabled=1\r\n");
+    let mut s = String::from("; FlowScale SR (written by FlowScale; the game picks changes up live, F9 too)\r\n[sr]\r\nenabled=1\r\n");
     s += &format!("sharpness={:.2}\r\nframe_weight={:.2}\r\nsharpen_mode={}\r\nrelight={}\r\nanti_shimmer={}\r\nfp16={}\r\n",
         cfg.sharpness, cfg.frame_weight, cfg.sharpen_mode, cfg.relight as u8, if cfg.anti_shimmer { "-1" } else { "0" }, cfg.fp16);
+    s += &format!("ao_strength={:.2}\r\ngi_strength={:.2}\r\nao_samples={}\r\nao_fade_distance={}\r\n", cfg.ao_strength, cfg.gi_strength, cfg.ao_samples, cfg.fade_m);
+    if !cfg.curve { s += "curve=0,0 1,1\r\n"; }
     if cfg.ratio_override > 0.0 { for k in ["ratio_quality", "ratio_balanced", "ratio_performance", "ratio_ultra_performance"] { s += &format!("{k}={:.2}\r\n", cfg.ratio_override); } }
     if cfg.compare { s += "compare_key=0x7A\r\n"; }
     s += &format!("[debug]\r\nenabled={}\r\nindicator={}\r\n", cfg.compare as u8, cfg.indicator as u8);
@@ -198,7 +218,8 @@ pub fn write_sr_ini(dir: &Path, cfg: &SrConfig) -> std::io::Result<()> {
 }
 
 #[derive(Clone, Copy)]
-pub struct SrConfig { pub sharpness: f32, pub frame_weight: f32, pub sharpen_mode: i32, pub relight: bool, pub anti_shimmer: bool, pub fp16: i32, pub ratio_override: f32, pub compare: bool, pub indicator: bool }
+pub struct SrConfig { pub sharpness: f32, pub frame_weight: f32, pub sharpen_mode: i32, pub relight: bool, pub anti_shimmer: bool, pub fp16: i32, pub ratio_override: f32, pub compare: bool, pub indicator: bool,
+    pub ao_strength: f32, pub gi_strength: f32, pub ao_samples: i32, pub curve: bool, pub fade_m: i32 }
 
 pub fn install(g: &Game, cfg: &SrConfig) -> Result<String, String> {
     if g.anticheat { return Err("anti-cheat files found in this game: not modifying it".into()); }
@@ -206,7 +227,8 @@ pub fn install(g: &Game, cfg: &SrConfig) -> Result<String, String> {
     let src = sr_source()?;
     let ffx: Vec<&PathBuf> = g.ffx.iter().filter(|p| exports(p, b"ffxCreateContext") && !is_ours(p)).collect();
     let xess: Vec<&PathBuf> = g.xess.iter().filter(|p| exports(p, b"xessD3D12Execute") && !is_ours(p)).collect();
-    if ffx.is_empty() && xess.is_empty() { return Err("this game has no FSR 3.1 or XeSS DLL FlowScale SR can take over".into()); }
+    if !g.opti.is_empty() && ffx.is_empty() && xess.is_empty() { return install_opti(g, cfg, &src); }
+    if ffx.is_empty() && xess.is_empty() { return Err("this game has no DirectX 12 FSR 3.1 or XeSS DLL FlowScale SR can take over".into()); }
     let mut m = Manifest::new(&g.root, "FlowScale SR");
     let bk = g.root.join(BACKUP);
     let mut dirs: Vec<PathBuf> = vec![];
@@ -233,6 +255,23 @@ pub fn install(g: &Game, cfg: &SrConfig) -> Result<String, String> {
     Ok(apis)
 }
 
+/// OptiScaler v10: FlowScale SR as its custom FidelityFX provider (custom\FlowScaleSR\ffx), the game's
+/// files untouched. It then shows in OptiScaler's upscaler list.
+fn install_opti(g: &Game, cfg: &SrConfig, src: &Path) -> Result<String, String> {
+    let mut m = Manifest::new(&g.root, "FlowScale SR (OptiScaler)");
+    for o in &g.opti {
+        let base = opti_main(o).join("custom").join("FlowScaleSR");
+        if base.exists() { return Err(format!("{} already exists", base.display())); }
+        let d = base.join("ffx");
+        std::fs::create_dir_all(&d).map_err(|e| e.to_string())?;
+        std::fs::copy(src, d.join("amd_fidelityfx_dx12.dll")).map_err(|e| format!("copy into {}: {e}", d.display()))?;
+        write_sr_ini(&d, cfg).map_err(|e| e.to_string())?;
+        m.lines.push(format!("adddir\t{}", m.rel(&base)));
+    }
+    m.save().map_err(|e| e.to_string())?;
+    Ok("OptiScaler → FlowScaleSR".into())
+}
+
 pub fn restore(g: &Game) -> Result<String, String> {
     let bk = g.root.join(BACKUP);
     let txt = std::fs::read_to_string(bk.join(MANIFEST)).map_err(|_| "nothing installed by FlowScale here".to_string())?;
@@ -242,7 +281,7 @@ pub fn restore(g: &Game) -> Result<String, String> {
         let p = g.root.join(rel);
         let r = match op {
             "add" => if p.exists() { std::fs::remove_file(&p) } else { Ok(()) },
-            "adddir" => if p.exists() { std::fs::remove_dir_all(&p) } else { Ok(()) },
+            "adddir" => { let r = if p.exists() { std::fs::remove_dir_all(&p) } else { Ok(()) }; if let Some(c) = p.parent() { let _ = std::fs::remove_dir(c); } r }
             "replace" => std::fs::copy(bk.join(rel), &p).map(|_| ()),
             _ => Ok(()),
         };

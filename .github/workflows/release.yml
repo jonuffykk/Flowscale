@@ -1,0 +1,63 @@
+name: Release
+
+# Every push to main builds and tests FlowScale. When the version in Cargo.toml is new (no release v<version> yet),
+# it is published with its section of CHANGELOG.md as the notes; a version without a section fails the run.
+# Nothing is kept in Actions storage: no cache, no workflow artifacts. Pull requests only build and test.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Version and notes
+        id: version
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"' -List).Matches[0].Groups[1].Value
+          $lines = Get-Content CHANGELOG.md
+          $start = [array]::IndexOf($lines, "## $version")
+          if ($start -lt 0) { Write-Error "CHANGELOG.md has no '## $version' section"; exit 1 }
+          $end = $start + 1
+          while ($end -lt $lines.Count -and -not $lines[$end].StartsWith('## ')) { $end++ }
+          $lines[($start + 1)..($end - 1)] -join "`n" | Out-File notes.md -Encoding utf8
+          gh release view "v$version" *> $null
+          $new = $LASTEXITCODE -ne 0
+          $global:LASTEXITCODE = 0
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "new=$($new.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          if ($new) { "FlowScale $version will be published" } else { "v$version is already published: build and test only" }
+
+      - name: Build
+        shell: pwsh
+        run: ./build.ps1
+
+      - name: Test
+        run: cargo test --release --workspace
+
+      - name: Publish
+        if: github.event_name == 'push' && steps.version.outputs.new == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          gh release create "v$v" "dist/FlowScale-$v.zip" --target $env:GITHUB_SHA --title "FlowScale $v" --notes-file notes.md --latest

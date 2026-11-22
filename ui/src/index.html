@@ -36,8 +36,9 @@
             <div class="acts"><button id="btnScale" class="btn btn-primary btn-lg"></button><span class="muted" id="scaleKey"></span></div>
           </article>
           <article class="tile" id="tileLimit">
-            <div><h2 data-t="home.limit"></h2><p class="state" id="limState"></p></div>
+            <div><h2 data-t="home.limit"></h2><p class="state" id="limState"></p><p class="state num" id="limQuality"></p><p class="state muted" id="detState"></p></div>
             <div class="chips" id="limChips"></div>
+            <div id="limAdmin" class="notice hidden" style="padding:10px 14px"><p data-t="admin.body"></p><button class="btn btn-primary" id="btnLimAdmin" data-t="admin.allow"></button></div>
             <div class="acts"><button id="btnLimit" class="btn btn-primary btn-lg"></button><span class="muted" id="limKey"></span></div>
           </article>
         </div>
@@ -164,12 +165,16 @@ const T = {
   "match.h": ["Além do próprio exe: outros executáveis, caminhos completos ou títulos de janela, separados por ponto e vírgula. Aceita * e ?.", "Besides its own exe: other executables, full paths or window titles, separated by semicolons. Accepts * and ?."],
   "match.ph": ["jogo.exe; *Dolphin*; C:\\Jogos\\*", "game.exe; *Dolphin*; C:\\Games\\*"],
   "off": ["desligado", "off"], "game": ["jogo", "game"],
+  "admin.body": ["Este jogo roda como administrador. Permita só para ele; o FlowScale continua sem privilégios.", "This game runs as administrator. Allow it for this game only; FlowScale itself stays unprivileged."],
+  "admin.allow": ["Permitir", "Allow"],
+  "q.line": ["Erro p99 {0} ms · acordar {1} ms · limitado {2}%{3}", "p99 error {0} ms · wake {1} ms · limited {2}%{3}"], "q.drift": [" · deriva {0} ppm", " · drift {0} ppm"],
+  "rtss.hint": ["RTSS no jogo: use o modo de hook \"Microsoft Detours\" no RivaTuner para evitar conflito", "RTSS in game: switch RivaTuner's hooking to \"Microsoft Detours\" to avoid conflicts"],
 };
 const S_ = {
   output: ["Saída", "Output", "Onde a imagem final aparece e como ela é apresentada.", "Where the final picture appears and how it's presented."],
   scaling: ["Escala", "Scaling", "Como a janela capturada é ampliada para o monitor.", "How the captured window is enlarged to the display."],
   framegen: ["Geração de quadros", "Frame generation", "Quadros intermediários por fluxo óptico. Funciona em qualquer janela, sem suporte do jogo.", "In-between frames from optical flow. Works on any window, no game support needed."],
-  limiter: ["Limitador", "Limiter", "Controla o ritmo do jogo por dentro do loop de renderização. D3D9, D3D11, D3D12, OpenGL e Vulkan. Jogos com anti-cheat são ignorados.", "Paces the game from inside its render loop. D3D9, D3D11, D3D12, OpenGL and Vulkan. Games with anti-cheat are skipped."],
+  limiter: ["Limitador", "Limiter", "Controla o ritmo do jogo por dentro do loop de renderização. DirectDraw, D3D8 a D3D12, OpenGL e Vulkan. Jogos com anti-cheat são ignorados.", "Paces the game from inside its render loop. DirectDraw, D3D8 to D3D12, OpenGL and Vulkan. Games with anti-cheat are skipped."],
   osd: ["Overlay no jogo", "In-game overlay", "O painel de FPS. Aparece sobre a imagem escalada, ou sobre a janela do jogo quando só o limitador está ativo.", "The FPS panel. Drawn on the scaled picture, or over the game window when only the limiter is on."],
   cursor: ["Cursor e recorte", "Cursor & crop", "Valem no modo Tela cheia.", "Apply in Fullscreen mode."],
   auto: ["Automação", "Automation", "Comportamento automático deste perfil.", "Automatic behaviour of this profile."],
@@ -194,7 +199,7 @@ const L = {
   flow_scale: ["Resolução do fluxo", "Flow resolution", "Fração da resolução usada para estimar o movimento.", "Fraction of the resolution used to estimate motion."],
   ui_threshold: ["Proteção do HUD", "HUD protection", "Impede que textos e ícones parados sejam deformados.", "Keeps static text and icons from warping."],
   limiter: ["Limitar este jogo", "Limit this game", "Liga o limitador quando este perfil é usado.", "Turns the limiter on when this profile is used."],
-  cap_mode: ["Limite", "Cap", "Casar com a geração = taxa do monitor ÷ multiplicador.", "Match frame gen = refresh ÷ multiplier."],
+  cap_mode: ["Limite", "Cap", "Taxa fixa: o FPS do jogo. Os modos do monitor dizem o que chega à tela: com geração de quadros o jogo fica nessa taxa ÷ multiplicador.", "Fixed rate: the game's FPS. The display modes name what reaches the screen: with frame generation the game gets that rate ÷ multiplier."],
   fps_cap: ["FPS", "FPS", "Valor exato, até 0,01.", "Exact value, to 0.01."],
   latency_mode: ["Espera", "Wait", "Baixa latência espera depois do Present, antes de o jogo ler os comandos.", "Low latency waits after Present, before the game reads input."],
   draw_cursor: ["Desenhar o cursor", "Draw the cursor", "", ""], scale_cursor: ["Escalar o cursor", "Scale the cursor", "", ""], clip_cursor: ["Prender o cursor no jogo", "Keep the cursor in the game", "", ""],
@@ -205,7 +210,7 @@ const L = {
   osd_pos: ["Posição", "Position", "", ""], osd_theme: ["Tema", "Theme", "", ""], osd_scale: ["Tamanho", "Size", "", ""], osd_opacity: ["Opacidade", "Opacity", "", ""],
   osd_limiter: ["Também só com o limitador", "Also with only the limiter", "Mostra o painel sobre o jogo mesmo sem escalar. Funciona com jogos em janela ou sem borda.", "Shows the panel over the game even without scaling. Works with windowed or borderless games."],
   hk_scale: ["Escalar / parar", "Scale / stop", "", ""], hk_limit: ["Pausar o limitador", "Pause the limiter", "Sem limitador ativo, limita o jogo em foco.", "With no limiter active, limits the focused game."], hk_osd: ["Mostrar / ocultar overlay", "Show / hide overlay", "", ""],
-  auto_detect: ["Detectar jogos sozinho", "Detect games automatically", "Liga o limitador nos jogos que ganham foco quando o perfil Padrão está com ele ligado.", "Attaches the limiter to games that take focus when Default has it on."],
+  auto_detect: ["Detectar jogos sozinho", "Detect games automatically", "Desligado por padrão: o limitador só entra quando você pede ou num jogo com perfil próprio. Ligado, entra nos jogos reconhecidos que ganham foco.", "Off by default: the limiter only attaches when you ask or to a game with its own profile. On, it attaches to recognized games that take focus."],
   close_to_tray: ["Minimizar e fechar para a bandeja", "Minimize and close to tray", "", ""], start_minimized: ["Iniciar minimizado", "Start minimized", "", ""], autostart: ["Iniciar com o Windows", "Start with Windows", "", ""],
   sr_sharpness: ["Nitidez", "Sharpness", "0,60 mantém a imagem como foi reconstruída.", "0.60 keeps the image as reconstructed."],
   sr_weight: ["Peso do quadro", "Frame weight", "Menor é mais estável, maior é mais nítido em movimento.", "Lower is steadier, higher is crisper in motion."],
@@ -215,6 +220,11 @@ const L = {
   sr_relight: ["Reiluminação (experimental)", "Relight (experimental)", "Oclusão ambiente em tela e um rebote de luz antes do upscaling.", "Screen-space ambient occlusion and one light bounce before upscaling."],
   sr_compare: ["Tecla de comparação", "Comparison key", "F11 mostra o FlowScale SR à esquerda e o original à direita.", "F11 shows FlowScale SR left and the original right."],
   sr_indicator: ["Indicador", "Indicator", "Uma marquinha no canto enquanto o FlowScale SR está ativo.", "A small mark in the corner while FlowScale SR is active."],
+  sr_ao: ["Oclusão ambiente", "Ambient occlusion", "Força da oclusão da reiluminação (só luz ambiente).", "Relight's occlusion strength (ambient light only)."],
+  sr_gi: ["Iluminação global", "Global illumination", "Luz rebatida das superfícies próximas.", "Light bounced off nearby surfaces."],
+  sr_ao_samples: ["Amostras", "Samples", "Mais amostras: menos ruído, mais custo de GPU.", "More samples: less noise, more GPU time."],
+  sr_curve: ["Curva de tons", "Tone curve", "Pretos um pouco mais densos e sombras mais escuras, com os realces preservados.", "Slightly crushed blacks and a darker low end, highlights kept."],
+  sr_fade: ["Distância do fade da AO", "AO fade distance", "Metros a partir dos quais a oclusão some (0: nunca).", "Metres from which the occlusion fades out (0: never)."],
   queue: ["Fila de captura", "Capture queue", "0 usa sempre o quadro mais novo (menor latência). 1 e 2 seguram quadros na fila e ficam mais estáveis com FPS instável ou GPU no limite.", "0 always uses the newest frame (least latency). 1 and 2 keep frames queued and stay steadier with unstable FPS or a busy GPU."],
   gsync: ["Suporte a G-SYNC", "G-SYNC support", "Placas NVIDIA: libera o G-SYNC na janela do FlowScale com um perfil de driver só para ele. Desligar desfaz. FreeSync e Adaptive Sync não precisam disso.", "NVIDIA cards: lets G-SYNC run on FlowScale's window through a driver profile just for it. Turning it off undoes it. FreeSync and Adaptive Sync don't need this."],
   follow_window: ["Seguir a janela do jogo", "Follow the game window", "Se o jogo fechar e reabrir a janela (troca de modo, launcher → jogo), volta a escalar sozinho.", "If the game closes and re-opens its window (mode switch, launcher → game), scaling resumes on its own."],
@@ -222,12 +232,14 @@ const L = {
   a4k_size: ["Rede do Anime4K", "Anime4K network", "Redes maiores reconstroem melhor e custam mais. Saída 720p numa GTX 1650: S 0,4 ms, M 1 ms, L 1,8 ms, VL 2,8 ms, UL 5,2 ms.", "Bigger networks reconstruct better and cost more. 720p output on a GTX 1650: S 0.4 ms, M 1 ms, L 1.8 ms, VL 2.8 ms, UL 5.2 ms."],
   sharpen_filter: ["Filtro de nitidez", "Sharpening filter", "RCAS é o do FSR; CAS é o da AMD, mais suave em texturas finas.", "RCAS is FSR's; CAS is AMD's, gentler on fine textures."],
   fg_min_fps: ["FPS mínimo para gerar", "Minimum FPS to generate", "Abaixo disso mostra só quadros reais, para não borrar em travadas. 0 desliga.", "Below this only real frames are shown, so hitches don't smear. 0 turns it off."],
+  fg_auto: ["Qualidade automática", "Automatic quality", "Mede o tempo de GPU da geração e baixa a resolução do fluxo (até 40%) quando ela tiraria FPS do jogo; sobe de novo quando sobra GPU.", "Measures frame generation's GPU time and lowers the flow resolution (down to 40%) when it would cost the game frames; raises it again when the GPU has room."],
   dedup: ["Ignorar quadros repetidos", "Skip repeated frames", "Emuladores e jogos travados em 30 que mostram cada quadro duas vezes: interpola só entre quadros novos.", "Emulators and 30-fps games that show each frame twice: interpolate only between new frames."],
   hide_cursor: ["Ocultar o cursor", "Hide the cursor", "Esconde o cursor enquanto escala; útil em jogos de controle.", "Hides the cursor while scaling; handy for controller games."],
   osd_color: ["Cor de destaque", "Accent color", "", ""], osd_font: ["Fonte", "Font", "", ""],
   osd_x: ["Afastar na horizontal", "Horizontal offset", "", ""], osd_y: ["Afastar na vertical", "Vertical offset", "", ""],
   start_admin: ["Sempre abrir como administrador", "Always run as administrator", "Pede permissão ao abrir. Necessário para limitar jogos que rodam como administrador.", "Asks for permission on launch. Needed to limit games that run as administrator."],
   theme: ["Tema", "Theme", "", ""],
+  always_on_top: ["Sempre por cima", "Always on top", "Mantém a janela do FlowScale acima das outras.", "Keeps the FlowScale window above other windows."],
   vrs: ["Escala por região (VRS)", "Variable rate scaling (VRS)", "Reescala só as partes do quadro que mudaram. Alivia muito a GPU em conteúdo quase parado; em cenas com muito movimento o ganho some. Sem geração de quadros.", "Re-scales only the parts of the frame that changed. Big GPU savings on mostly static content; in busy scenes the gain disappears. Without frame generation."],
 };
 const O = {
@@ -243,7 +255,7 @@ const O = {
   scale_mode: [["Ajustar à tela", "Fator"], ["Fit screen", "Factor"]], fit: [["Manter", "Esticar"], ["Keep", "Stretch"]],
   framegen: [["Desligada", "Multiplicador", "FPS alvo"], ["Off", "Multiplier", "Target FPS"]],
   quality: [["Desempenho", "Equilibrado", "Qualidade"], ["Performance", "Balanced", "Quality"]],
-  cap_mode: [["Personalizado", "Taxa do monitor", "VRR (−3%)", "Metade da taxa", "Casar com a geração"], ["Custom", "Refresh rate", "VRR (−3%)", "Half refresh", "Match frame gen"]],
+  cap_mode: [["Taxa fixa", "Taxa do monitor", "VRR (−3%)", "Metade da taxa", "Casar com a geração"], ["Fixed rate", "Refresh rate", "VRR (−3%)", "Half refresh", "Match frame gen"]],
   latency_mode: [["Suave", "Baixa latência"], ["Smooth", "Low latency"]],
   osd_detail: [["Compacto", "Normal", "Completo"], ["Compact", "Normal", "Full"]],
   osd_pos: [["↖", "↗", "↙", "↘"], ["↖", "↗", "↙", "↘"]], osd_theme: [["Escuro", "Claro"], ["Dark", "Light"]],
@@ -266,7 +278,18 @@ const STATUS = {
   sr_restored: ["{0} voltou aos arquivos originais", "{0} is back to its original files"], game_error: ["{0}: {1}", "{0}: {1}"], game_folder_bad: ["Pasta inválida: {0}", "Not a folder: {0}"],
   sr_applied: ["Ajustes gravados em {0} pasta(s). F9 recarrega com o jogo aberto.", "Settings written to {0} folder(s). F9 reloads them in a running game."],
   following: ["{0} fechou a janela; esperando ela voltar…", "{0} closed its window; waiting for it to come back…"],
+  det_idle: ["Detector: aguardando um jogo em foco", "Detector: waiting for a focused game"],
+  det_game: ["Detector: {0} é um jogo (pontuação {1})", "Detector: {0} is a game (score {1})"],
+  det_waiting: ["Detector: {0} ainda sem renderizador; olhando de novo", "Detector: {0} has no renderer yet; looking again"],
+  det_not_game: ["Detector: {0} ignorado (pontuação {1}: {2})", "Detector: {0} skipped (score {1}: {2})"],
+  det_blocked: ["Detector: {0} recusado, anti-cheat {1}", "Detector: {0} refused, anti-cheat {1}"],
+  det_profile: ["Detector: {0} usa o perfil {1}", "Detector: {0} uses profile {1}"],
+  det_via: ["Detector: {0} herdou o perfil {2} do launcher {1}", "Detector: {0} inherited profile {2} from launcher {1}"],
   gone: ["O jogo fechou a janela", "The game closed its window"],
+  limiter_unloaded: ["Limitador desligado e removido do jogo", "Limiter off and removed from the game"], limiter_resident: ["Limitador desligado (a layer Vulkan mantém a DLL carregada)", "Limiter off (the Vulkan layer keeps the DLL loaded)"],
+  lim_protected: ["{0} só aceita DLLs assinadas pela Microsoft: não dá para limitar", "{0} only accepts Microsoft-signed DLLs: it cannot be limited"],
+  lim_uac_denied: ["{0}: a permissão de administrador foi recusada", "{0}: administrator permission was declined"],
+  game_exited: ["{0} fechou (código {1})", "{0} exited (code {1})"], game_crashed: ["{0} travou: {2} ({1})", "{0} crashed: {2} ({1})"],
 };
 STATUS.ready = T.ready;
 // Spanish. Anything missing falls back to English.
@@ -303,13 +326,16 @@ const ES = {
     "vk": "Compatibilidad con Vulkan", "vk.h": "Registra una capa Vulkan solo para tu usuario. Queda inactiva en todo proceso que FlowScale no esté limitando. Reinicia el juego tras activarla.",
     "windowed.note": "En ventana, la imagen queda 1:1 sobre el juego. El escalado y el cursor se aplican en Pantalla completa; la nitidez sigue aplicándose.",
     ready: "Listo", "sec.profile": "Este perfil", "match": "Se aplica a",
+    "admin.body": "Este juego corre como administrador. Permítelo solo para él; FlowScale sigue sin privilegios.", "admin.allow": "Permitir",
+    "q.line": "Error p99 {0} ms · despertar {1} ms · limitado {2}%{3}", "q.drift": " · deriva {0} ppm",
+    "rtss.hint": "RTSS en el juego: cambia el hook de RivaTuner a \"Microsoft Detours\" para evitar conflictos",
     "match.h": "Además de su propio exe: otros ejecutables, rutas completas o títulos de ventana, separados por punto y coma. Acepta * y ?.", "match.ph": "juego.exe; *Dolphin*; C:\\Juegos\\*",
     "off": "desactivado", "game": "juego",
   },
   S: {
     output: ["Salida", "Dónde aparece la imagen final y cómo se presenta."], scaling: ["Escalado", "Cómo se amplía la ventana capturada al monitor."],
     framegen: ["Generación de fotogramas", "Fotogramas intermedios por flujo óptico. Funciona en cualquier ventana, sin soporte del juego."],
-    limiter: ["Limitador", "Controla el ritmo del juego desde su bucle de renderizado. D3D9, D3D11, D3D12, OpenGL y Vulkan. Los juegos con anti-cheat se omiten."],
+    limiter: ["Limitador", "Controla el ritmo del juego desde su bucle de renderizado. DirectDraw, D3D8 a D3D12, OpenGL y Vulkan. Los juegos con anti-cheat se omiten."],
     osd: ["Overlay en el juego", "El panel de FPS. Se dibuja sobre la imagen escalada, o sobre la ventana del juego cuando solo el limitador está activo."],
     cursor: ["Cursor y recorte", "Se aplican en Pantalla completa."], auto: ["Automatización", "Comportamiento automático de este perfil."],
     keys: ["Atajos", "Funcionan en cualquier lugar, también dentro del juego. Haz clic y pulsa la combinación."], app: ["App", ""],
@@ -325,7 +351,7 @@ const ES = {
     framegen: ["Generación", ""], multiplier: ["Multiplicador", "Salida = FPS del juego × multiplicador."], target: ["FPS objetivo", "Genera los fotogramas necesarios para llegar a esa tasa."],
     quality: ["Calidad", "Rendimiento cuesta unos 4 ms en 1080p en una GTX 1650, con la misma calidad medida."], flow_scale: ["Resolución del flujo", "Fracción de la resolución usada para estimar el movimiento."],
     ui_threshold: ["Protección del HUD", "Evita que textos e iconos estáticos se deformen."], limiter: ["Limitar este juego", "Activa el limitador cuando se usa este perfil."],
-    cap_mode: ["Límite", "Igualar a la generación = frecuencia del monitor ÷ multiplicador."], fps_cap: ["FPS", "Valor exacto, hasta 0,01."],
+    cap_mode: ["Límite", "Tasa fija: los FPS del juego. Los modos del monitor indican lo que llega a la pantalla: con generación de fotogramas el juego queda en esa tasa ÷ multiplicador."], fps_cap: ["FPS", "Valor exacto, hasta 0,01."],
     latency_mode: ["Espera", "Baja latencia espera después de Present, antes de que el juego lea los controles."],
     draw_cursor: ["Dibujar el cursor", ""], scale_cursor: ["Escalar el cursor", ""], clip_cursor: ["Mantener el cursor en el juego", ""],
     cursor_speed: ["Ajustar la velocidad del ratón", "Compensa la ampliación. Vuelve a la normalidad al detener."],
@@ -334,12 +360,15 @@ const ES = {
     osd: ["Mostrar overlay", ""], osd_detail: ["Detalle", "Completo añade el gráfico de tiempo de fotograma."], osd_pos: ["Posición", ""], osd_theme: ["Tema", ""],
     osd_scale: ["Tamaño", ""], osd_opacity: ["Opacidad", ""], osd_limiter: ["También solo con el limitador", "Muestra el panel sobre el juego aunque no escales. Funciona con juegos en ventana o sin bordes."],
     hk_scale: ["Escalar / detener", ""], hk_limit: ["Pausar el limitador", "Sin limitador activo, limita el juego en primer plano."], hk_osd: ["Mostrar / ocultar overlay", ""],
-    auto_detect: ["Detectar juegos solo", "Activa el limitador en los juegos que toman el foco cuando el perfil predeterminado lo tiene activado."],
+    auto_detect: ["Detectar juegos solo", "Desactivado por defecto: el limitador solo entra cuando lo pides o en un juego con perfil propio. Activado, entra en los juegos reconocidos que toman el foco."],
     close_to_tray: ["Minimizar y cerrar a la bandeja", ""], start_minimized: ["Iniciar minimizado", ""], autostart: ["Iniciar con Windows", ""],
     sr_sharpness: ["Nitidez", "0,60 deja la imagen como se reconstruyó."], sr_weight: ["Peso del fotograma", "Menor es más estable, mayor es más nítido en movimiento."],
     sr_sharpen_mode: ["Filtro de nitidez", ""], sr_fp16: ["Precisión", "FP16 ayuda a algunas GPU, no a todas."], sr_ratio: ["Escala de render forzada", "En \"juego\" se usan los modos de calidad del propio juego."],
     sr_anti_shimmer: ["Anti-parpadeo", "Calma el dentado que parpadea en cada fotograma."], sr_relight: ["Reiluminación (experimental)", "Oclusión ambiental en pantalla y un rebote de luz antes del escalado."],
     sr_compare: ["Tecla de comparación", "F11 muestra FlowScale SR a la izquierda y el original a la derecha."], sr_indicator: ["Indicador", "Una marca pequeña en la esquina mientras FlowScale SR está activo."],
+    sr_ao: ["Oclusión ambiental", "Fuerza de la oclusión de la reiluminación (solo luz ambiental)."], sr_gi: ["Iluminación global", "Luz rebotada de las superficies cercanas."],
+    sr_ao_samples: ["Muestras", "Más muestras: menos ruido, más coste de GPU."], sr_curve: ["Curva de tonos", "Negros algo más densos y sombras más oscuras, con las luces preservadas."],
+    sr_fade: ["Distancia de fundido de la AO", "Metros desde los que la oclusión desaparece (0: nunca)."],
     queue: ["Cola de captura", "0 usa siempre el fotograma más nuevo (menor latencia). 1 y 2 mantienen fotogramas en cola y son más estables con FPS inestables o la GPU al límite."],
     gsync: ["Compatibilidad con G-SYNC", "Tarjetas NVIDIA: permite G-SYNC en la ventana de FlowScale con un perfil de controlador solo para él. Desactivarlo lo deshace. FreeSync y Adaptive Sync no lo necesitan."],
     follow_window: ["Seguir la ventana del juego", "Si el juego cierra y vuelve a abrir su ventana (cambio de modo, launcher → juego), el escalado se reanuda solo."],
@@ -347,17 +376,19 @@ const ES = {
     a4k_size: ["Red de Anime4K", "Las redes más grandes reconstruyen mejor y cuestan más. Salida 720p en una GTX 1650: S 0,4 ms, M 1 ms, L 1,8 ms, VL 2,8 ms, UL 5,2 ms."],
     sharpen_filter: ["Filtro de nitidez", "RCAS es el de FSR; CAS es el de AMD, más suave en texturas finas."],
     fg_min_fps: ["FPS mínimo para generar", "Por debajo solo se muestran fotogramas reales, para no emborronar en tirones. 0 lo desactiva."],
+    fg_auto: ["Calidad automática", "Mide el tiempo de GPU de la generación y baja la resolución del flujo (hasta 40%) cuando le quitaría FPS al juego; la sube cuando sobra GPU."],
     dedup: ["Omitir fotogramas repetidos", "Emuladores y juegos a 30 que muestran cada fotograma dos veces: interpola solo entre fotogramas nuevos."],
     hide_cursor: ["Ocultar el cursor", "Oculta el cursor mientras escala; útil en juegos con mando."], osd_color: ["Color de acento", ""], osd_font: ["Fuente", ""],
     osd_x: ["Desplazamiento horizontal", ""], osd_y: ["Desplazamiento vertical", ""],
     vrs: ["Escalado por regiones (VRS)", "Vuelve a escalar solo las partes del fotograma que cambiaron. Alivia mucho la GPU con contenido casi estático; en escenas con mucho movimiento la ganancia desaparece. Sin generación de fotogramas."],
+    always_on_top: ["Siempre encima", "Mantiene la ventana de FlowScale sobre las demás."],
     start_admin: ["Abrir siempre como administrador", "Pide permiso al abrir. Necesario para limitar juegos que corren como administrador."], theme: ["Tema", ""],
   },
   O: {
     output: ["Pantalla completa", "En ventana"], sync: ["Tearing", "Sin VSync", "VSync", "Medio VSync"], capture: ["Graphics Capture", "Duplicación de pantalla", "GDI"],
     scaler: ["Desactivado (1:1)", "Vecino más cercano", "Entero", "Bilineal", "Bilineal nítido", "Bicúbico", "Lanczos 3", "FSR 1", "Línea (anime)", "NVIDIA NIS", "Snapdragon GSR", "xBR (pixel art)", "Anime4K"],
     scale_mode: ["Ajustar a la pantalla", "Factor"], fit: ["Mantener", "Estirar"], framegen: ["Desactivada", "Multiplicador", "FPS objetivo"],
-    quality: ["Rendimiento", "Equilibrado", "Calidad"], cap_mode: ["Personalizado", "Frecuencia del monitor", "VRR (−3%)", "Mitad de la frecuencia", "Igualar a la generación"],
+    quality: ["Rendimiento", "Equilibrado", "Calidad"], cap_mode: ["Tasa fija", "Frecuencia del monitor", "VRR (−3%)", "Mitad de la frecuencia", "Igualar a la generación"],
     latency_mode: ["Suave", "Baja latencia"], osd_detail: ["Compacto", "Normal", "Completo"], osd_theme: ["Oscuro", "Claro"], sr_fp16: ["FP32", "FP16", "Solo AMD"],
     fsr_mode: ["Calidad", "Rendimiento"], osd_color: ["Azul", "Verde", "Ámbar", "Rosa", "Cian", "Neutro"], theme: ["Sistema", "Claro", "Oscuro"],
   },
@@ -370,7 +401,13 @@ const ES = {
     hotkey_taken: "Otra app ya usa el atajo de {0}. Elige otro en Ajustes → Atajos.", vk_error: "Capa Vulkan: {0}", rtss_ok: "FlowScale excluido en RivaTuner", rtss_unchanged: "RivaTuner no se modificó",
     games_found: "{0} juegos encontrados", sr_installed: "FlowScale SR instalado en {0}. Elige {1} en el juego.", sr_restored: "{0} volvió a sus archivos originales",
     game_folder_bad: "Carpeta no válida: {0}", sr_applied: "Ajustes guardados en {0} carpeta(s). F9 los recarga con el juego abierto.", ready: "Listo",
-    following: "{0} cerró su ventana; esperando a que vuelva…", gone: "El juego cerró su ventana",
+    following: "{0} cerró su ventana; esperando a que vuelva…",
+    det_idle: "Detector: esperando un juego en primer plano", det_game: "Detector: {0} es un juego (puntuación {1})", det_waiting: "Detector: {0} aún sin renderizador; mirando de nuevo",
+    det_not_game: "Detector: {0} ignorado (puntuación {1}: {2})", det_blocked: "Detector: {0} rechazado, anti-cheat {1}",
+    det_profile: "Detector: {0} usa el perfil {1}", det_via: "Detector: {0} heredó el perfil {2} del launcher {1}", gone: "El juego cerró su ventana",
+    limiter_unloaded: "Limitador desactivado y retirado del juego", limiter_resident: "Limitador desactivado (la capa Vulkan mantiene la DLL cargada)",
+    lim_protected: "{0} solo acepta DLL firmadas por Microsoft: no se puede limitar", lim_uac_denied: "{0}: se rechazó el permiso de administrador",
+    game_exited: "{0} se cerró (código {1})", game_crashed: "{0} falló: {2} ({1})",
   },
 };
 const HK_NAMES = { hk_scale: ["escalar", "scale"], hk_limit: ["limitador", "limiter"], hk_osd: ["overlay", "overlay"] };
@@ -413,6 +450,8 @@ function fmt(o, v) {
   if (k === "target") return v + " fps";
   if (pct.includes(k)) return v + "%";
   if (k === "sr_sharpness" || k === "sr_weight") return (v / 100).toFixed(2);
+  if (k === "sr_fade") return v ? v + " m" : t("hk.none");
+  if (k === "sr_ao" || k === "sr_gi") return (v / 100).toFixed(2);
   if (k === "sr_ratio") return v ? (v / 100).toFixed(1) + "×" : t("game");
   if (k === "delay") return v + " s";
   if (k === "osd_x" || k === "osd_y") return v + " px";
@@ -440,7 +479,7 @@ function relevant(k) {
     case "queue": return v("capture") === 0;
     case "vrs": return v("framegen") === 0 && ![9, 12].includes(v("scaler"));
     case "gsync": return !!S.gsync_supported;
-    case "fg_min_fps": case "dedup": return v("framegen") > 0;
+    case "fg_min_fps": case "dedup": case "fg_auto": return v("framegen") > 0;
     case "multiplier": return v("framegen") === 1;
     case "target": return v("framegen") === 2;
     case "quality": case "flow_scale": case "ui_threshold": return v("framegen") > 0;
@@ -452,6 +491,7 @@ function relevant(k) {
     case "delay": return v("auto") === 1;
     case "osd_detail": case "osd_pos": case "osd_theme": case "osd_scale": case "osd_opacity": case "osd_limiter":
     case "osd_color": case "osd_font": case "osd_x": case "osd_y": return v("osd") === 1;
+    case "sr_ao": case "sr_gi": case "sr_ao_samples": case "sr_curve": case "sr_fade": return v("sr_relight") === 1;
   }
   return true;
 }
@@ -599,8 +639,12 @@ function renderHome() {
   const fgTxt = v("framegen") === 0 ? t("chip.nofg") : v("framegen") === 1 ? v("multiplier") + "×" : v("target") + " fps";
   $("#scaleChips").innerHTML = [v("output") ? t("chip.win") : t("chip.full"), optsOf(S.byKey.scaler)[v("scaler")], fgTxt, optsOf(S.byKey.sync)[v("sync")]]
     .map((c, i) => `<span class="chip ${i === 2 && v("framegen") ? "on" : ""}">${esc(c)}</span>`).join("");
-  $("#limChips").innerHTML = [optsOf(S.byKey.cap_mode)[v("cap_mode")] + (v("cap_mode") === 0 ? " · " + (v("fps_cap") / 1000).toFixed(2) : ""), optsOf(S.byKey.latency_mode)[v("latency_mode")]]
-    .map(c => `<span class="chip">${esc(c)}</span>`).join("");
+  const limChips = [optsOf(S.byKey.cap_mode)[v("cap_mode")] + (v("cap_mode") === 0 ? " · " + (v("fps_cap") / 1000).toFixed(2) : ""), optsOf(S.byKey.latency_mode)[v("latency_mode")]];
+  if (S.limiter_exe && S.limiter_arch) limChips.push(S.limiter_arch + (lang === "en" ? "-bit" : " bits"));
+  for (const o of S.limiter_overlays || []) limChips.push(o);
+  $("#limChips").innerHTML = limChips.map(c => `<span class="chip">${esc(c)}</span>`).join("")
+    + ((S.limiter_overlays || []).includes("RTSS") ? `<span class="chip" style="background:var(--warn-soft);color:var(--warn)">${esc(t("rtss.hint"))}</span>` : "");
+  $("#limAdmin").classList.toggle("hidden", !S.limiter_admin);
   $("#scaleKey").textContent = hkText(S.app.hk_scale ?? 0); $("#limKey").textContent = hkText(S.app.hk_limit ?? 0);
 }
 function renderIngame() {
@@ -636,9 +680,11 @@ function onState(m) {
   $("#rtssBox").classList.toggle("hidden", !m.rtss);
   $("#keysHint").textContent = `${hkText(m.app.hk_scale ?? 0)} · ${hkText(m.app.hk_osd ?? 0)}`;
   if (m.limiter_status?.code && !lastStatus) setStatus(m.limiter_status.code, m.limiter_status.args);
+  onDetector(m.detector);
   renderAll();
 }
 let lastStatus = "";
+function onDetector(d) { const el = $("#detState"); if (!el) return; el.textContent = d?.code ? t(d.code, ...(d.args || []).map(a => /\.exe$/i.test(a) ? short(a) : a)) : t("det_idle"); }
 function setStatus(code, args) { lastStatus = code; $("#status").innerHTML = status(code, args); }
 
 // ---------------------------------------------------------------- live telemetry
@@ -688,6 +734,9 @@ function onTele(m) {
     const ex = esc(short(L_.exe || S.limiter_exe));
     $("#limState").innerHTML = !la ? t("lim.wait", ex) : L_.enabled ? t("lim.on", ex, L_.cap.toFixed(2)) + ` · ${esc(L_.api)}${L_.w ? ` · ${L_.w}×${L_.h}` : ""}` : t("lim.paused", ex);
   }
+  // Pacing quality: how far frames land from the target, how late the timer wakes, how often the cap binds.
+  const fx = v => (v ?? 0).toFixed(3).replace(".", li() === 0 || isES() ? "," : ".");
+  $("#limQuality").textContent = la && L_.enabled ? t("q.line", fx(L_.p99), fx(L_.wake_avg), Math.round(L_.limited_pct ?? 0), Math.abs(L_.drift_ppm ?? 0) >= 1 ? t("q.drift", Math.round(L_.drift_ppm)) : "") : "";
   $("#srLive").dataset.on = !!R.active; $("#srDot").classList.toggle("on", !!R.active);
   $("#srLiveText").textContent = R.active ? t("sr.live", R.exe, R.api, `${R.rw}×${R.rh}`, `${R.ow}×${R.oh}`, R.gpu_ms > 0 ? R.gpu_ms.toFixed(2) + " ms GPU" : t("sr.measuring")) : t("sr.idle");
 }
@@ -723,6 +772,7 @@ $("#btnAddProfile").addEventListener("click", () => openPicker("profile"));
 $("#btnRemoveProfile").addEventListener("click", () => send({ t: "profile", op: "remove" }));
 $("#profile").addEventListener("change", e => send({ t: "profile", op: "select", name: e.target.value }));
 $("#btnRtss").addEventListener("click", () => send({ t: "rtss" }));
+$("#btnLimAdmin").addEventListener("click", () => { $("#limAdmin").classList.add("hidden"); send({ t: "limit_admin" }); });
 $("#btnSmooth").addEventListener("click", () => { for (const [k, v] of [["limiter", 1], ["cap_mode", 4], ["sync", 2]]) setVal(k, v, true); renderAll(); });
 
 // ---------------------------------------------------------------- games
@@ -748,6 +798,7 @@ window.chrome?.webview?.addEventListener("message", e => {
   if (m.t === "schema") { S.opts = m.opts; S.byKey = Object.fromEntries(m.opts.map(o => [o.key, o])); }
   else if (m.t === "state") onState(m);
   else if (m.t === "tele") onTele(m);
+  else if (m.t === "detector") onDetector(m);
   else if (m.t === "status") setStatus(m.code, m.args);
   else if (m.t === "go") go(m.page);
   else if (m.t === "games") onGames(m);

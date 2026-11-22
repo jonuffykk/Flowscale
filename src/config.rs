@@ -51,9 +51,12 @@ pub static OPTS: &[Opt] = &[
     p("ui_threshold", "framegen", Kind::Range(0, 100, 5), 50),
     p("fg_min_fps", "framegen", Kind::Range(0, 60, 1), 10),  // below this game FPS, generation pauses (avoids smearing on hitches)
     p("dedup", "framegen", Kind::Toggle, 1),                 // skip repeated frames (emulators, 30-in-60 games)
+    p("fg_auto", "framegen", Kind::Toggle, 1),               // lower the flow resolution when FG would take GPU time from the game
     // Limiter
     p("limiter", "limiter", Kind::Toggle, 0),
-    p("cap_mode", "limiter", Kind::Choice(5), 2),
+    // 0 a fixed rate (the default), 1 refresh, 2 VRR (-3%), 3 half refresh, 4 match frame gen (= 1). Modes 1-4 name what
+    // reaches the screen: with frame generation the game gets that rate divided by the multiplier.
+    p("cap_mode", "limiter", Kind::Choice(5), 0),
     p("fps_cap", "limiter", Kind::Range(10_000, 500_000, 10), 60_000),
     p("latency_mode", "limiter", Kind::Choice(2), 0),
     // Cursor & crop
@@ -86,11 +89,12 @@ pub static OPTS: &[Opt] = &[
     a("hk_limit", "keys", Kind::Hotkey, hk(MOD_CTRL | MOD_ALT, b'L')),
     a("hk_osd", "keys", Kind::Hotkey, hk(MOD_CTRL | MOD_ALT, b'O')),
     // App
-    a("auto_detect", "app", Kind::Toggle, 1),
+    a("auto_detect", "app", Kind::Toggle, 0),
     a("close_to_tray", "app", Kind::Toggle, 1),
     a("start_minimized", "app", Kind::Toggle, 0),
     a("autostart", "app", Kind::Toggle, 0),
     a("start_admin", "app", Kind::Toggle, 0),
+    a("always_on_top", "app", Kind::Toggle, 0),
     a("theme", "app", Kind::Choice(3), 0),                // 0 follow Windows, 1 light, 2 dark
     // FlowScale SR (written into game folders)
     a("sr_sharpness", "sr", Kind::Range(0, 100, 1), 60),
@@ -102,6 +106,11 @@ pub static OPTS: &[Opt] = &[
     a("sr_relight", "sr", Kind::Toggle, 0),
     a("sr_compare", "sr", Kind::Toggle, 0),
     a("sr_indicator", "sr", Kind::Toggle, 0),
+    a("sr_ao", "sr", Kind::Range(0, 100, 5), 75),
+    a("sr_gi", "sr", Kind::Range(0, 400, 10), 200),
+    a("sr_ao_samples", "sr", Kind::Range(4, 32, 4), 32),
+    a("sr_curve", "sr", Kind::Toggle, 1),
+    a("sr_fade", "sr", Kind::Range(0, 500, 10), 100),
 ];
 
 pub fn opt(k: &str) -> Option<&'static Opt> { OPTS.iter().find(|o| o.key == k) }
@@ -130,7 +139,7 @@ pub struct Settings {
     pub capture: i32, pub sync: i32, pub max_latency: i32, pub hdr: bool, pub draw_cursor: bool, pub scale_cursor: bool,
     pub clip_cursor: bool, pub cursor_speed: bool, pub resize: bool, pub keep_unfocused: bool, pub gpu: i32, pub display: i32, pub crop: [i32; 4],
     pub fsr_fast: bool, pub sharpen_cas: bool, pub a4k_size: i32, pub queue: u32, pub gsync: bool, pub follow_window: bool,
-    pub fg_min_fps: f32, pub dedup: bool, pub hide_cursor: bool, pub vrs: bool,
+    pub fg_min_fps: f32, pub dedup: bool, pub fg_auto: bool, pub hide_cursor: bool, pub vrs: bool,
 }
 impl Settings {
     pub fn from(p: &Profile) -> Settings {
@@ -144,7 +153,7 @@ impl Settings {
             cursor_speed: b("cursor_speed") && !windowed, resize: b("resize") && !windowed, keep_unfocused: b("keep_unfocused"),
             gpu: g("gpu"), display: g("display"), crop: [g("crop_l"), g("crop_t"), g("crop_r"), g("crop_b")],
             fsr_fast: g("fsr_mode") == 1, sharpen_cas: g("sharpen_filter") == 1, a4k_size: g("a4k_size"), queue: g("queue") as u32,
-            gsync: b("gsync"), follow_window: b("follow_window"), fg_min_fps: g("fg_min_fps") as f32, dedup: b("dedup"), hide_cursor: b("hide_cursor"), vrs: b("vrs") }
+            gsync: b("gsync"), follow_window: b("follow_window"), fg_min_fps: g("fg_min_fps") as f32, dedup: b("dedup"), fg_auto: b("fg_auto"), hide_cursor: b("hide_cursor"), vrs: b("vrs") }
     }
     pub fn test() -> Settings { Settings::from(&defaults()) }
 }
@@ -190,12 +199,16 @@ impl Store {
 
 fn ini_path() -> PathBuf { crate::limiter::exe_dir().join("settings.ini") }
 
+/// Settings layout version: 2 made the limiter opt-in (no automatic attach) and a fixed rate the default cap.
+const CFG_VERSION: i32 = 2;
+
 pub fn load() -> Store {
     let mut profiles = BTreeMap::new(); profiles.insert("Default".to_string(), defaults());
     let mut app: BTreeMap<String, i32> = OPTS.iter().filter(|o| o.scope == Scope::App).map(|o| (o.key.to_string(), o.def)).collect();
     let txt = std::fs::read_to_string(ini_path()).unwrap_or_default();
     let mut cur = String::new();
     let mut legacy_fps_overlay = None;
+    let mut version = if txt.trim().is_empty() { CFG_VERSION } else { 1 };
     let mut matches = BTreeMap::new();
     for line in txt.lines().map(str::trim) {
         if line.starts_with(';') || line.is_empty() { continue; }
@@ -208,6 +221,7 @@ pub fn load() -> Store {
         if k.trim() == "match" && cur != "App" { if !v.trim().is_empty() { matches.insert(cur.clone(), v.trim().to_string()); } continue; }
         let (k, Ok(v)) = (k.trim(), v.trim().parse::<i32>()) else { continue };
         if k == "draw_fps" { legacy_fps_overlay = Some(legacy_fps_overlay.unwrap_or(0) | v); continue; }
+        if k == "cfg_version" && cur == "App" { version = v; continue; }
         let Some(o) = opt(k) else { continue };
         let v = sanitize(o, v);
         match (o.scope, cur == "App") {
@@ -216,13 +230,19 @@ pub fn load() -> Store {
             _ => {}
         }
     }
+    if version < 2 {
+        // 1 -> 2: the detector attached the limiter to whatever took focus, and display-relative caps fought frame
+        // generation. Now the limiter only runs when asked for, at a fixed rate unless a profile says otherwise.
+        app.insert("auto_detect".into(), 0);
+        if let Some(p) = profiles.get_mut("Default") { if matches!(get(p, "cap_mode"), 2 | 4) { set(p, "cap_mode", 0); } }
+    }
     // Pre-2.1 ini: the per-profile FPS counter becomes the global overlay switch.
     if let Some(v) = legacy_fps_overlay { if !txt.contains("osd=") { app.insert("osd".into(), (v != 0) as i32); } }
     Store { profiles, app, matches }
 }
 
 pub fn save(s: &Store) {
-    let mut out = String::from("; FlowScale settings. Edit while FlowScale is closed, or use the app.\r\n[App]\r\n");
+    let mut out = format!("; FlowScale settings. Edit while FlowScale is closed, or use the app.\r\n[App]\r\ncfg_version={CFG_VERSION}\r\n");
     for (k, v) in &s.app { out += &format!("{k}={v}\r\n"); }
     for (name, v) in &s.profiles {
         out += &format!("\r\n[{name}]\r\n");

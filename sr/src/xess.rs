@@ -133,7 +133,7 @@ fn frame(c: &Ctx, cl: *mut c_void, e: &ExecuteParams) -> Option<Frame> {
             jittered_mv: fl & JITTERED_MV != 0, depth_inverted: fl & INVERTED_DEPTH != 0, hdr: fl & LDR_INPUT == 0,
             exposure_mul: (if e.exposure_scale > 0.0 { e.exposure_scale } else { 1.0 }) * c.exposure, pre_exposure: 1.0,
             reactive_mul: if c.responsive > 0.0 { 1.0 / c.responsive } else { 1.0 } },
-        reset: e.reset != 0, fov_y: 0.0, z_near: 0.0, z_far: 0.0,
+        reset: e.reset != 0, fov_y: 0.0, z_near: 0.0, z_far: 0.0, meters_per_unit: 0.0,
     })
 }
 

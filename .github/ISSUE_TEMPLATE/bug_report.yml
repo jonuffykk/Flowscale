@@ -1,0 +1,25 @@
+name: Bug or game report
+description: Something wrong in a game or in the app
+labels: [bug]
+body:
+  - type: input
+    id: game
+    attributes: { label: Game and graphics API, placeholder: "e.g. Elden Ring, D3D12" }
+    validations: { required: true }
+  - type: input
+    id: gpu
+    attributes: { label: GPU, monitor refresh, Windows version }
+    validations: { required: true }
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [Scaling, Frame generation, Frame limiter, FlowScale SR (in-game upscaler), Overlay, UI, Other]
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes: { label: What happened, and what you expected }
+    validations: { required: true }
+  - type: textarea
+    id: log
+    attributes: { label: flowscale.log, description: "The end of flowscale.log next to flowscale.exe (and flowscale_sr.log for SR)", render: text }

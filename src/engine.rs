@@ -73,11 +73,12 @@ impl Gpu {
             D3D11CreateDevice(adapter.as_ref(), dt, HMODULE::default(), D3D11_CREATE_DEVICE_BGRA_SUPPORT,
                 Some(&[D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0]), D3D11_SDK_VERSION, Some(&mut dev), None, Some(&mut ctx))?;
             let dev: ID3D11Device = dev.unwrap(); let ctx = ctx.unwrap();
-            if let Ok(dx) = dev.cast::<IDXGIDevice>() { let _ = dx.SetGPUThreadPriority(7); }
+            let prio: i32 = std::env::var("FS_GPU_PRIO").ok().and_then(|v| v.parse().ok()).unwrap_or(4);
+            if let Ok(dx) = dev.cast::<IDXGIDevice>() { let _ = dx.SetGPUThreadPriority(if prio >= 4 { 7 } else { 0 }); }
             if let Ok(g) = LoadLibraryW(w!("gdi32.dll")) {
                 if let Some(p) = GetProcAddress(g, s!("D3DKMTSetProcessSchedulingPriorityClass")) {
                     let f: extern "system" fn(HANDLE, i32) -> i32 = std::mem::transmute(p);
-                    f(GetCurrentProcess(), 4);
+                    f(GetCurrentProcess(), prio);
                 }
             }
             let mut cb = None;
@@ -371,7 +372,7 @@ impl Drop for Capture {
     }
 }
 
-struct FrameGen { dims: Vec<(u32, u32)>, luma: [Vec<Tex>; 2], ff: Vec<Tex>, fb: Vec<Tex>, tmp: Vec<Tex>, out: Tex, scale: f32, cur: usize, frames: usize, warm: bool, probe: (usize, [ID3D11Texture2D; 2]), dedup: bool }
+struct FrameGen { dims: Vec<(u32, u32)>, luma: [Vec<Tex>; 2], ff: Vec<Tex>, fb: Vec<Tex>, tmp: Vec<Tex>, out: Tex, scale: f32, cur: usize, frames: usize, warm: bool, probe: (usize, [ID3D11Texture2D; 2]), dedup: bool, pub cut: bool }
 
 impl FrameGen {
     fn new(g: &Gpu, w: u32, h: u32, flow_scale: f32) -> Result<FrameGen> {
@@ -387,7 +388,7 @@ impl FrameGen {
             let mut t = None; unsafe { g.dev.CreateTexture2D(&d, None, Some(&mut t))?; } Ok(t.unwrap())
         };
         let probe = (pl, [stage()?, stage()?]);
-        Ok(FrameGen { probe, dedup: true, luma: [mk(DXGI_FORMAT_R16_FLOAT)?, mk(DXGI_FORMAT_R16_FLOAT)?], ff: mk(DXGI_FORMAT_R16G16_FLOAT)?, fb: mk(DXGI_FORMAT_R16G16_FLOAT)?, tmp: mk(DXGI_FORMAT_R16G16_FLOAT)?,
+        Ok(FrameGen { probe, dedup: true, cut: false, luma: [mk(DXGI_FORMAT_R16_FLOAT)?, mk(DXGI_FORMAT_R16_FLOAT)?], ff: mk(DXGI_FORMAT_R16G16_FLOAT)?, fb: mk(DXGI_FORMAT_R16G16_FLOAT)?, tmp: mk(DXGI_FORMAT_R16G16_FLOAT)?,
             out: g.tex(w, h, DXGI_FORMAT_R16G16B16A16_FLOAT, true, false)?, dims, scale, cur: 0, frames: 0, warm: false })
     }
 
@@ -402,30 +403,36 @@ impl FrameGen {
         }
     }
 
-    fn duplicate(&self, g: &Gpu, slot: usize) -> bool {
-        if self.frames == 0 || !self.dedup { return false; }
+    /// Compares the new frame's coarse luma with the last one: (same frame, scene cut). A cut (most of the image
+    /// changed by a lot, as FidelityFX optical flow's scene change detection) is never interpolated across.
+    fn compare(&self, g: &Gpu, slot: usize) -> (bool, bool) {
+        if self.frames == 0 { return (false, false); }
         let (l, st) = (&self.probe.0, &self.probe.1);
         let (w, h) = self.dims[*l];
         unsafe {
             g.ctx.CopyResource(&st[0], &self.luma[slot][*l].t);
             g.ctx.CopyResource(&st[1], &self.luma[slot ^ 1][*l].t);
             let (mut a, mut b) = (D3D11_MAPPED_SUBRESOURCE::default(), D3D11_MAPPED_SUBRESOURCE::default());
-            if g.ctx.Map(&st[0], 0, D3D11_MAP_READ, 0, Some(&mut a)).is_err() { return false; }
-            if g.ctx.Map(&st[1], 0, D3D11_MAP_READ, 0, Some(&mut b)).is_err() { g.ctx.Unmap(&st[0], 0); return false; }
-            let mut same = true;
-            'rows: for y in 0..h as usize {
+            if g.ctx.Map(&st[0], 0, D3D11_MAP_READ, 0, Some(&mut a)).is_err() { return (false, false); }
+            if g.ctx.Map(&st[1], 0, D3D11_MAP_READ, 0, Some(&mut b)).is_err() { g.ctx.Unmap(&st[0], 0); return (false, false); }
+            let (mut maxd, mut big, mut sum) = (0f32, 0u32, 0f32);
+            for y in 0..h as usize {
                 let (ra, rb) = ((a.pData as *const u8).add(y * a.RowPitch as usize) as *const u16, (b.pData as *const u8).add(y * b.RowPitch as usize) as *const u16);
-                for x in 0..w as usize { if (h2f(*ra.add(x)) - h2f(*rb.add(x))).abs() > 0.002 { same = false; break 'rows; } }
+                for x in 0..w as usize { let d = (h2f(*ra.add(x)) - h2f(*rb.add(x))).abs(); maxd = maxd.max(d); sum += d; if d > 0.15 { big += 1; } }
             }
             g.ctx.Unmap(&st[0], 0); g.ctx.Unmap(&st[1], 0);
-            same
+            let n = (w * h) as f32;
+            (self.dedup && maxd <= 0.002, big as f32 > 0.6 * n && sum / n > 0.18)
         }
     }
 
     fn ingest(&mut self, g: &Gpu, frame: &Tex, quality: i32, hdr: bool) -> bool {
         let slot = self.cur ^ 1;
         self.pyramid(g, frame, hdr, slot);
-        if self.duplicate(g, slot) { return false; }
+        let (same, cut) = self.compare(g, slot);
+        if same { return false; }
+        self.cut = cut;
+        if cut { crate::log("frame gen: scene cut, not interpolated"); }
         self.cur = slot; self.frames += 1;
         if self.frames < 2 { return true; }
         let mut c = Cb::default();
@@ -462,6 +469,60 @@ impl FrameGen {
         let (w0, h0) = self.dims[0];
         let c = Cb { src: [prev.w as f32, prev.h as f32, 1.0 / prev.w as f32, 1.0 / prev.h as f32], p0: [0.0, t, ui, if hdr { 1.0 } else { 0.0 }], p1: [self.scale, w0 as f32, h0 as f32, 0.0], ..Default::default() };
         g.dispatch("CS_Interp", &[prev.srv.clone(), cur.srv.clone(), self.ff[0].srv.clone(), self.fb[0].srv.clone()], &self.out, prev.w, prev.h, &c);
+    }
+}
+
+/// GPU time of the work done for one real frame (frame generation, scaling, overlay), from timestamp queries read
+/// a few frames later without stalling.
+struct GpuTimer { q: Vec<(ID3D11Query, ID3D11Query, ID3D11Query)>, idx: usize, issued: usize, pub ms: f64 }
+impl GpuTimer {
+    fn new(g: &Gpu) -> Option<GpuTimer> {
+        let mk = |k| -> Option<ID3D11Query> { let mut q = None; unsafe { g.dev.CreateQuery(&D3D11_QUERY_DESC { Query: k, MiscFlags: 0 }, Some(&mut q)).ok()?; } q };
+        let q = (0..4).map(|_| Some((mk(D3D11_QUERY_TIMESTAMP_DISJOINT)?, mk(D3D11_QUERY_TIMESTAMP)?, mk(D3D11_QUERY_TIMESTAMP)?))).collect::<Option<Vec<_>>>()?;
+        Some(GpuTimer { q, idx: 0, issued: 0, ms: 0.0 })
+    }
+    fn begin(&mut self, g: &Gpu) {
+        self.read(g);
+        let (d, b, _) = &self.q[self.idx];
+        unsafe { g.ctx.Begin(d); g.ctx.End(b); }
+    }
+    fn end(&mut self, g: &Gpu) {
+        let (d, _, e) = &self.q[self.idx];
+        unsafe { g.ctx.End(e); g.ctx.End(d); }
+        self.idx = (self.idx + 1) % self.q.len(); self.issued += 1;
+    }
+    /// The oldest set (3 frames back): its result if ready, never waiting.
+    fn read(&mut self, g: &Gpu) {
+        if self.issued < self.q.len() { return; }
+        let (d, b, e) = &self.q[self.idx];
+        unsafe {
+            let mut dj = D3D11_QUERY_DATA_TIMESTAMP_DISJOINT::default(); let (mut t0, mut t1) = (0u64, 0u64);
+            let flag = D3D11_ASYNC_GETDATA_DONOTFLUSH.0 as u32;
+            if g.ctx.GetData(d, Some(&mut dj as *mut _ as *mut c_void), size_of::<D3D11_QUERY_DATA_TIMESTAMP_DISJOINT>() as u32, flag).is_ok()
+                && g.ctx.GetData(b, Some(&mut t0 as *mut _ as *mut c_void), 8, flag).is_ok() && g.ctx.GetData(e, Some(&mut t1 as *mut _ as *mut c_void), 8, flag).is_ok()
+                && !dj.Disjoint.as_bool() && dj.Frequency > 0 && t1 > t0 {
+                let ms = (t1 - t0) as f64 * 1000.0 / dj.Frequency as f64;
+                self.ms = if self.ms == 0.0 { ms } else { self.ms * 0.9 + ms * 0.1 };
+            }
+        }
+    }
+}
+
+/// Adaptive frame generation: keeps our GPU time per real frame under a share of the frame's interval by moving the
+/// flow resolution between 40 % and the user's setting. Measured in a real game on a GTX 1650: 80 % flow held the
+/// game at 41 FPS, 50 % at 58.8 (cap 60) with the same 2x output quality bracket.
+struct FgAuto { scale: f32, max: f32, last: i64 }
+impl FgAuto {
+    // Floor 40 %: lower flow resolutions blur fine motion; the timings under GPU contention read high.
+    const STEPS: [f32; 5] = [1.0, 0.8, 0.65, 0.5, 0.4];
+    /// The new flow scale when a change is due (`share`: our GPU ms / real frame interval ms).
+    fn step(&mut self, share: f64, now: i64, freq: i64) -> Option<f32> {
+        if now - self.last < freq * 2 { return None; }
+        let i = Self::STEPS.iter().position(|&x| x <= self.scale + 1e-3).unwrap_or(Self::STEPS.len() - 1);
+        let next = if share > 0.30 && i + 1 < Self::STEPS.len() { Some(Self::STEPS[i + 1]) }
+            else if share < 0.12 && i > 0 && Self::STEPS[i - 1] <= self.max + 1e-3 { Some(Self::STEPS[i - 1]) } else { None };
+        if let Some(n) = next { self.scale = n; self.last = now; }
+        next
     }
 }
 
@@ -657,7 +718,12 @@ fn run_session(game: HWND, s: Settings, stop: Arc<AtomicBool>, status: Arc<Statu
     let waitable = unsafe { sc.GetFrameLatencyWaitableObject() };
     let make_rtv = |sc: &IDXGISwapChain2| -> Result<ID3D11RenderTargetView> { unsafe { let bb: ID3D11Texture2D = sc.GetBuffer(0)?; let mut r = None; g.dev.CreateRenderTargetView(&bb, None, Some(&mut r))?; Ok(r.unwrap()) } };
     let mut rtv_slot = Some(make_rtv(&sc)?);
-    let (interval, pflags) = match s.sync { 0 => (0, if tearing { DXGI_PRESENT_ALLOW_TEARING } else { DXGI_PRESENT(0) }), 1 => (0, DXGI_PRESENT(0)), 2 => (1, DXGI_PRESENT(0)), _ => (2, DXGI_PRESENT(0)) };
+    // Windowed output is composed by DWM, which already shows frames on vblanks and cannot tear. With 3+ generated
+    // frames per real one at high refresh our vblank scheduler (every vblank taken) collapsed in a real game: 7.7 real
+    // frames/s against DWM's 28 / 84 shown. There VSync is DWM's; elsewhere the exact scheduler stays.
+    // Measured: at 2x the scheduler wins (58.8 real / 117 shown vs 40 / 70); at 3x and above, and in target mode, DWM's.
+    let dwm_sync = s.windowed && s.sync >= 2 && s.framegen > 0 && (s.framegen == 2 || s.multiplier >= 3);
+    let (interval, pflags) = match s.sync { 0 => (0, if tearing { DXGI_PRESENT_ALLOW_TEARING } else { DXGI_PRESENT(0) }), 1 => (0, DXGI_PRESENT(0)), _ if dwm_sync => (0, DXGI_PRESENT(0)), 2 => (1, DXGI_PRESENT(0)), _ => (2, DXGI_PRESENT(0)) };
 
     let mut cap = Capture::open(s.capture, &g, game, s.hdr, s.queue, refresh)?;
     let capfmt = if s.hdr && matches!(cap, Capture::Wgc { .. }) { DXGI_FORMAT_R16G16B16A16_FLOAT } else { DXGI_FORMAT_B8G8R8A8_UNORM };
@@ -670,11 +736,14 @@ fn run_session(game: HWND, s: Settings, stop: Arc<AtomicBool>, status: Arc<Statu
     let mut size = (0u32, 0u32);
     let mut frames: Vec<Tex> = vec![]; let mut fi = 0usize; let mut nframes = 0usize;
     let mut fg: Option<FrameGen> = None;
+    // Two timers: the flow (once per real frame) and one generated output (interpolation + scaling).
+    let (mut t_flow, mut t_out) = (GpuTimer::new(&g), GpuTimer::new(&g));
+    let mut fg_auto = FgAuto { scale: s.flow_scale.clamp(0.25, 1.0), max: s.flow_scale.clamp(0.25, 1.0), last: 0 };
     let mut scaler = scale::Scaler::empty();
     let mut last_ts: i64 = 0; let mut deltas: Vec<f64> = vec![]; let mut phase: f32 = 0.0; let mut clock: i64 = 0;
     let mut hist: std::collections::VecDeque<(i64, u64)> = std::collections::VecDeque::new(); let mut frame_idx: u64 = 0;
     let (mut real_n, mut out_n, mut stat_t) = (0u32, 0u32, qpc()); let mut last_present: i64 = 0; let mut fps: (u32, u32);
-    let vsync_k: i64 = match s.sync { 2 => 1, 3 => 2, _ => 0 };
+    let vsync_k: i64 = if dwm_sync { 0 } else { match s.sync { 2 => 1, 3 => 2, _ => 0 } };
     let mut last_v: i64 = 0;
     let (mut dbg_dup, mut dbg_skip) = (0u32, 0u32);
     set(format!("scaling:{}", crate::window_title(game)));
@@ -722,7 +791,7 @@ fn run_session(game: HWND, s: Settings, stop: Arc<AtomicBool>, status: Arc<Statu
         if want_size != size {
             size = want_size;
             frames = match (0..2).map(|_| g.tex(size.0, size.1, capfmt, false, false)).collect() { Ok(v) => v, Err(e) => { result = Err(e); break 'main } };
-            fg = if s.framegen > 0 { FrameGen::new(&g, size.0, size.1, s.flow_scale).ok().map(|mut f| { f.dedup = s.dedup; f }) } else { None };
+            fg = if s.framegen > 0 { FrameGen::new(&g, size.0, size.1, fg_auto.scale).ok().map(|mut f| { f.dedup = s.dedup; f }) } else { None };
             let d = fit(&s, size, (mw, mh));
             scaler.prepare(&g, &s, size, (mw, mh));
             nframes = 0; phase = 0.0;
@@ -742,7 +811,13 @@ fn run_session(game: HWND, s: Settings, stop: Arc<AtomicBool>, status: Arc<Statu
                 match Capture::open(s.capture, &g, game, s.hdr, s.queue, refresh) { Ok(c) => { cap = c; continue; } Err(e) => { result = Err(e); break 'main } }
             }
         };
-        if let Some(f) = fg.as_mut() { if !f.ingest(&g, &frames[next], s.quality, s.hdr) { dbg_dup += 1; continue; } }
+        if fg.is_some() { if let Some(t) = t_flow.as_mut() { t.begin(&g); } }
+        if let Some(f) = fg.as_mut() {
+            let fresh = f.ingest(&g, &frames[next], s.quality, s.hdr);
+            if let Some(t) = t_flow.as_mut() { t.end(&g); }
+            if !fresh { dbg_dup += 1; continue; }
+        }
+        let mut timed_out = false;
         fi = next; nframes += 1; real_n += 1; total_real += 1;
         let arrive = qpc();
         let dt_ms = if last_ts != 0 { (pacer.ms(ts - last_ts) / (skipped + 1) as f64).clamp(1.0, 250.0) } else { 16.67 };
@@ -771,7 +846,10 @@ fn run_session(game: HWND, s: Settings, stop: Arc<AtomicBool>, status: Arc<Statu
                 // Below the minimum game frame rate there is too little motion continuity to interpolate: show real frames only.
                 if s.fg_min_fps > 0.0 && 1000.0 / dt < s.fg_min_fps as f64 { step = 1.0; } else {
                 step = if s.framegen == 2 { ((1000.0 / s.target.max(1) as f64) / dt) as f32 } else { 1.0 / s.multiplier.max(1) as f32 };
-                let max_out = match s.sync { 2 => refresh as f64, 3 => refresh as f64 / 2.0, _ => f64::INFINITY };
+                // Never show more than the display takes: its refresh, half in half-rate mode, and with G-SYNC the VRR
+                // ceiling (3 % under refresh) so generated frames stay inside the VRR range. Tearing mode alone is free.
+                let vrr = (refresh as f64 * 0.97).floor();
+                let max_out = match s.sync { 0 if !s.gsync => f64::INFINITY, 3 => refresh as f64 / 2.0, _ if s.gsync => vrr, _ => refresh as f64 };
                 let min_step = ((1000.0 / max_out) / dt) as f32;
                 step = step.max(min_step).clamp(0.05, 1.0);
                 if dt > 100.0 { step = 1.0; }
@@ -791,12 +869,14 @@ fn run_session(game: HWND, s: Settings, stop: Arc<AtomicBool>, status: Arc<Statu
             if stop.load(Ordering::Relaxed) { break; }
             let due = base + pacer.ticks(dt * (t - step).max(0.0) as f64);
             if k + 1 < nout && qpc() > due + pacer.ticks(dt * step as f64 * 0.5) { dbg_skip += 1; continue; }
-            let src: (&Option<ID3D11ShaderResourceView>, u32, u32) = if t >= 0.95 || fg.is_none() || nframes < 2 {
+            // A scene cut keeps the output cadence but shows the new frame itself: nothing to blend between.
+            let src: (&Option<ID3D11ShaderResourceView>, u32, u32) = if t >= 0.95 || nframes < 2 || fg.as_ref().is_none_or(|f| f.cut) {
                 (&frames[fi].srv, size.0, size.1)
             } else if t <= 0.05 {
                 (&frames[1 - fi].srv, size.0, size.1)
             } else {
                 let f = fg.as_ref().unwrap();
+                if !timed_out { if let Some(tm) = t_out.as_mut() { tm.begin(&g); } }
                 f.interp(&g, &frames[1 - fi], &frames[fi], t, s.ui_threshold, s.hdr);
                 (&f.out.srv, size.0, size.1)
             };
@@ -804,6 +884,7 @@ fn run_session(game: HWND, s: Settings, stop: Arc<AtomicBool>, status: Arc<Statu
             // Variable rate scaling compares against the previous captured frame (real frames only).
             let prev = if fg.is_none() && nframes >= 2 { Some(&frames[1 - fi].srv) } else { None };
             scaler.render_vrs(&g, &s, &rtv, src, (mw, mh), prev);
+            if fg.is_some() && t > 0.05 && t < 0.95 && !timed_out { timed_out = true; if let Some(tm) = t_out.as_mut() { tm.end(&g); } }
             if s.draw_cursor && !s.hide_cursor {
                 let mut ci = CURSORINFO { cbSize: size_of::<CURSORINFO>() as u32, ..Default::default() };
                 if unsafe { GetCursorInfo(&mut ci) }.is_ok() && ci.flags.0 & 1 != 0 && ci.ptScreenPos.x >= cr.left && ci.ptScreenPos.x < cr.right && ci.ptScreenPos.y >= cr.top && ci.ptScreenPos.y < cr.bottom {
@@ -840,6 +921,17 @@ fn run_session(game: HWND, s: Settings, stop: Arc<AtomicBool>, status: Arc<Statu
             if last_present != 0 { let ms = pacer.ms(now - last_present) as f32; let mut tl = status.tele.lock().unwrap(); tl.out.push(ms); if tl.out_recent.len() < 4096 { tl.out_recent.push(ms); } }
             last_present = now;
         }
+        if let (Some(tf), Some(to)) = (t_flow.as_mut(), t_out.as_mut()) {
+            let ngen = outputs.len().saturating_sub(1) as f64;
+            let ms = tf.ms + to.ms * ngen;
+            if s.fg_auto && fg.is_some() && tf.ms > 0.0 && to.ms > 0.0 && dt > 1.0 {
+                if let Some(n) = fg_auto.step(ms / dt, qpc(), pacer.freq) {
+                    crate::log(&format!("frame gen: GPU {:.2} ms (flow {:.2} + {ngen:.0} x {:.2}) of a {:.2} ms frame, flow resolution now {:.0}%", ms, tf.ms, to.ms, dt, n * 100.0));
+                    fg = FrameGen::new(&g, size.0, size.1, n).ok().map(|mut f| { f.dedup = s.dedup; f });
+                    nframes = 0; phase = 0.0; tf.ms = 0.0; to.ms = 0.0;
+                }
+            }
+        }
 
         let now = qpc();
         if pacer.ms(now - stat_t) >= 500.0 {
@@ -875,7 +967,18 @@ fn run_session(game: HWND, s: Settings, stop: Arc<AtomicBool>, status: Arc<Statu
     }
     drop(guard);
     let secs = (qpc() - t_start) as f64 / qpf() as f64;
-    crate::log(&format!("session: {:.1} s, {} captured ({:.1}/s), {} presented ({:.1}/s), scaler {}, capture {}, queue {}, vrs {}", secs, total_real, total_real as f64 / secs.max(0.001), total_out, total_out as f64 / secs.max(0.001), s.scaler, s.capture, s.queue, s.vrs));
+    let pacing = {
+        let mut v = status.tele.lock().map(|t| t.out_recent.clone()).unwrap_or_default();
+        if v.len() > 20 { v.drain(..10); }
+        if v.is_empty() { String::new() } else {
+            let m = v.iter().sum::<f32>() / v.len() as f32;
+            let sd = (v.iter().map(|x| (x - m) * (x - m)).sum::<f32>() / v.len() as f32).sqrt();
+            v.sort_by(f32::total_cmp);
+            let q = |p: f32| v[((v.len() - 1) as f32 * p) as usize];
+            format!(", output frame time p50 {:.2} / p99 {:.2} / max {:.2} ms, σ {:.2} ms", q(0.5), q(0.99), v[v.len() - 1], sd)
+        }
+    };
+    crate::log(&format!("session: {:.1} s, {} captured ({:.1}/s), {} presented ({:.1}/s){pacing}, scaler {}, capture {}, queue {}, vrs {}, framegen {}", secs, total_real, total_real as f64 / secs.max(0.001), total_out, total_out as f64 / secs.max(0.001), s.scaler, s.capture, s.queue, s.vrs, s.framegen));
     // "gone": the game closed its window; the app may follow a re-created one.
     set(match &result { Ok(()) if gone => "gone".into(), Ok(()) => "stopped".into(), Err(e) => format!("error:{}", e.message()) });
     result
@@ -967,10 +1070,47 @@ pub fn selftest() -> Result<String> {
     ov.draw(&g, rt.rtv.as_ref().unwrap(), [0.0, 0.0, 1920.0, 1080.0], false, 1.0, qpc(), qpf());
     if ov.tex.is_none() { return Err(windows::core::Error::new(E_FAIL, "overlay did not render")); }
     let _ = read(&rt.t, DXGI_FORMAT_R16G16B16A16_FLOAT, 1920, 1080, 8)?;
+    let rot = rotation_test(&g)?;
     let ms = (qpc() - t0) as f64 * 1000.0 / f;
-    let r = format!("ok: shaders compiled, flow mean dx = {mean_dx:.2} px (expect ~ -6), interp NaN = {nan}, total {ms:.1} ms");
+    let r = format!("ok: shaders compiled, flow mean dx = {mean_dx:.2} px (expect ~ -6), interp NaN = {nan}, rotation {rot}, total {ms:.1} ms");
     if nan || !(-7.5..-4.5).contains(&mean_dx) { return Err(windows::core::Error::new(E_FAIL, r)); }
     Ok(r)
+}
+
+/// A rotated display, simulated: a desktop image (every pixel unique) is turned into the panel-orientation surface
+/// Desktop Duplication hands over for each DXGI rotation (90: the panel turned clockwise is the desktop), then the
+/// capture's PS_Rotate pass must give back the desktop exactly, pixel for pixel.
+fn rotation_test(g: &Gpu) -> Result<String> {
+    let (w, h) = (96u32, 54u32);
+    let desk: Vec<u32> = (0..w * h).map(|i| 0xFF00_0000 | ((i % w) << 8) | (i / w) | (((i * 7) & 0xff) << 16)).collect();
+    let mut res = vec![];
+    for rot in [2i32, 3, 4] {
+        let (pw, ph) = if rot == 3 { (w, h) } else { (h, w) };
+        let mut panel = vec![0u32; (pw * ph) as usize];
+        for y in 0..h { for x in 0..w {
+            let (px, py) = match rot { 2 => (y, ph - 1 - x), 3 => (w - 1 - x, h - 1 - y), _ => (pw - 1 - y, x) };
+            panel[(py * pw + px) as usize] = desk[(y * w + x) as usize];
+        } }
+        let d = D3D11_TEXTURE2D_DESC { Width: pw, Height: ph, MipLevels: 1, ArraySize: 1, Format: DXGI_FORMAT_B8G8R8A8_UNORM, SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 }, Usage: D3D11_USAGE_DEFAULT, BindFlags: D3D11_BIND_SHADER_RESOURCE.0 as u32, ..Default::default() };
+        let init = D3D11_SUBRESOURCE_DATA { pSysMem: panel.as_ptr() as _, SysMemPitch: pw * 4, SysMemSlicePitch: 0 };
+        let mut t = None; unsafe { g.dev.CreateTexture2D(&d, Some(&init), Some(&mut t))?; }
+        let t: ID3D11Texture2D = t.unwrap(); let mut srv = None; unsafe { g.dev.CreateShaderResourceView(&t, None, Some(&mut srv))?; }
+        let up = g.tex(w, h, DXGI_FORMAT_B8G8R8A8_UNORM, false, true)?;
+        let vp = [0.0, 0.0, w as f32, h as f32];
+        g.draw("PS_Rotate", &srv, up.rtv.as_ref().unwrap(), vp, 0, &Cb { dst: vp, i0: [rot, 0, 0, 0], ..Default::default() });
+        let sd = D3D11_TEXTURE2D_DESC { Usage: D3D11_USAGE_STAGING, BindFlags: 0, CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32, Width: w, Height: h, ..d };
+        let mut st = None; unsafe { g.dev.CreateTexture2D(&sd, None, Some(&mut st))?; } let st: ID3D11Texture2D = st.unwrap();
+        let mut bad = 0;
+        unsafe {
+            g.ctx.CopyResource(&st, &up.t);
+            let mut m = D3D11_MAPPED_SUBRESOURCE::default(); g.ctx.Map(&st, 0, D3D11_MAP_READ, 0, Some(&mut m))?;
+            for y in 0..h { for x in 0..w { if *((m.pData as *const u8).add((y * m.RowPitch + x * 4) as usize) as *const u32) != desk[(y * w + x) as usize] { bad += 1; } } }
+            g.ctx.Unmap(&st, 0);
+        }
+        if bad > 0 { return Err(windows::core::Error::new(E_FAIL, format!("rotation {}: {bad} of {} pixels wrong", (rot - 1) * 90, w * h))); }
+        res.push(format!("{}°", (rot - 1) * 90));
+    }
+    Ok(format!("{} exact", res.join("/")))
 }
 
 fn h2f(v: u16) -> f32 { let s = if v & 0x8000 != 0 { -1.0 } else { 1.0 }; let e = ((v >> 10) & 0x1f) as i32; let m = (v & 0x3ff) as f32; if e == 0 { s * m * 2f32.powi(-24) } else { s * (1.0 + m / 1024.0) * 2f32.powi(e - 15) } }

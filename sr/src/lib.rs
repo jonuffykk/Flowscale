@@ -238,7 +238,7 @@ pub unsafe extern "C" fn ffxDispatch(context: *mut Context, desc: *const Header)
         }
         let d = &*(desc as *const DispatchUpscale);
         let mut cfg = config::get();
-        if key_edge(cfg.reload_key, &RELOAD_DOWN) { cfg = config::reload(); }
+        if key_edge(cfg.reload_key, &RELOAD_DOWN) || config::changed_on_disk() { cfg = config::reload(); }
         let has_real = !c.real.is_null() && o.is_some();
         let mut switched = false;
         if key_edge(cfg.toggle_key, &TOGGLE_DOWN) && c.up.is_some() && has_real {

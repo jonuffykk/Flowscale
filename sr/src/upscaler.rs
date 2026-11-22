@@ -8,7 +8,7 @@ use windows::Win32::Graphics::Dxgi::Common::*;
 use windows::Win32::Graphics::Dxgi::*;
 
 use crate::config::Settings;
-use crate::consts::{self, AoConstants, Constants, FrameNums};
+use crate::consts::{self, AoFrame, Constants, FrameNums};
 use crate::ffx;
 use crate::log;
 
@@ -33,7 +33,7 @@ pub struct Frame {
     pub reactive: Option<ID3D12Resource>, pub output: ID3D12Resource,
     pub color_state: D3D12_RESOURCE_STATES, pub depth_state: D3D12_RESOURCE_STATES, pub mv_state: D3D12_RESOURCE_STATES,
     pub exposure_state: D3D12_RESOURCE_STATES, pub reactive_state: D3D12_RESOURCE_STATES, pub output_state: D3D12_RESOURCE_STATES,
-    pub n: FrameNums, pub reset: bool, pub fov_y: f32, pub z_near: f32, pub z_far: f32,
+    pub n: FrameNums, pub reset: bool, pub fov_y: f32, pub z_near: f32, pub z_far: f32, pub meters_per_unit: f32,
 }
 
 pub fn d3d_state(s: u32) -> D3D12_RESOURCE_STATES {
@@ -100,8 +100,9 @@ struct Psos {
     convert: Option<ID3D12PipelineState>, motion: Option<ID3D12PipelineState>, upscale: Option<ID3D12PipelineState>, sharpen: Option<ID3D12PipelineState>,
     upscale_as: Option<ID3D12PipelineState>, upscale16: Option<ID3D12PipelineState>, upscale16_as: Option<ID3D12PipelineState>, sharpen16: Option<ID3D12PipelineState>,
     fm: [[Option<ID3D12PipelineState>; 2]; 2],
-    ao_prep: Option<ID3D12PipelineState>, ao_main: Option<ID3D12PipelineState>, ao_filter: Option<ID3D12PipelineState>,
-    ao_temporal: Option<ID3D12PipelineState>, ao_compose: Option<ID3D12PipelineState>,
+    ao_prep: Option<ID3D12PipelineState>, ao_main: Option<ID3D12PipelineState>, ao_main16: Option<ID3D12PipelineState>, ao_filter: Option<ID3D12PipelineState>,
+    ao_temporal: Option<ID3D12PipelineState>, ao_compose: Option<ID3D12PipelineState>, ao_mipall: Option<ID3D12PipelineState>, ao_lut: Option<ID3D12PipelineState>,
+    ao_cacao: Option<ID3D12PipelineState>, ao_cacao2: Option<ID3D12PipelineState>, ao_curve: Option<ID3D12PipelineState>,
 }
 
 pub struct Upscaler {
@@ -109,7 +110,8 @@ pub struct Upscaler {
     root: ID3D12RootSignature, p: Psos, heap: ID3D12DescriptorHeap, heap_size: u32, heap_next: u32, inc: u32,
     amd: bool, last_fp16: Option<bool>, hdr_from_format: bool, out_check: Option<(DXGI_FORMAT, bool, bool)>,
     mda: [Tex; 2], hist: [Tex; 2], aux: [Tex; 2], stab: [Tex; 2], env: [Tex; 2], expo: [Tex; 2], change1: Tex,
-    ao_nd: Tex, ao_res: Tex, ao_f: Tex, ao_col: Tex, ao_h: [Tex; 2], ao_hd: [Tex; 2], ao_cur: usize, ao_ok: bool, ao_last: u64,
+    ao_col: Tex, ao_half: Tex, ao_half_f: Tex, ao_nd: Tex, ao_ndp: Tex, ao_h: [Tex; 2], ao_hd: [Tex; 2], ao_mip: [Tex; 4], ao_lut: Tex, ao_curve: Tex,
+    ao_lut_made: bool, curve_key: [f32; 26], ao_cur: usize, ao_ok: bool, ao_last: u64,
     split: bool, cur: usize, tex_valid: bool, frames: u64, prev_jit: [f32; 2],
     time_q: Option<ID3D12QueryHeap>, time_rb: Option<ID3D12Resource>, time_map: *const u64, tick_ms: f64, ms_acc: f64, ms_n: u32,
     pub upscale_ms: f32,
@@ -153,6 +155,8 @@ impl Upscaler {
                 sharpen: Some(mk(blobs::SHARPEN, "sharpen")?), upscale_as: Some(mk(blobs::UPSCALE_AS, "upscale_as")?),
                 ao_prep: Some(mk(blobs::AOPREP, "aoprep")?), ao_main: Some(mk(blobs::AOMAIN, "aomain")?), ao_filter: Some(mk(blobs::AOFILTER, "aofilter")?),
                 ao_temporal: Some(mk(blobs::AOTEMPORAL, "aotemporal")?), ao_compose: Some(mk(blobs::AOCOMPOSE, "aocompose")?),
+                ao_main16: Some(mk(blobs::AOMAIN16, "aomain16")?), ao_mipall: Some(mk(blobs::AOMIPALL, "aomipall")?), ao_lut: Some(mk(blobs::AOLUT, "aolut")?),
+                ao_cacao: Some(mk(blobs::AOCACAO, "aocacao")?), ao_cacao2: Some(mk(blobs::AOCACAO2, "aocacao2")?), ao_curve: Some(mk(blobs::AOCURVE, "aocurve")?),
                 ..Default::default()
             };
             let mut sm = D3D12_FEATURE_DATA_SHADER_MODEL { HighestShaderModel: D3D_SHADER_MODEL_6_2 };
@@ -187,7 +191,8 @@ impl Upscaler {
             let inc = dev.GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
             let mut u = Upscaler { dev, ci, s, root, p, heap, heap_size, heap_next: 0, inc, amd, last_fp16: None, hdr_from_format: false, out_check: None,
                 mda: Default::default(), hist: Default::default(), aux: Default::default(), stab: Default::default(), env: Default::default(), expo: Default::default(),
-                change1: Tex::default(), ao_nd: Tex::default(), ao_res: Tex::default(), ao_f: Tex::default(), ao_col: Tex::default(), ao_h: Default::default(), ao_hd: Default::default(),
+                change1: Tex::default(), ao_col: Tex::default(), ao_half: Tex::default(), ao_half_f: Tex::default(), ao_nd: Tex::default(), ao_ndp: Tex::default(), ao_h: Default::default(), ao_hd: Default::default(),
+                ao_mip: Default::default(), ao_lut: Tex::default(), ao_curve: Tex::default(), ao_lut_made: false, curve_key: [0.0; 26],
                 ao_cur: 0, ao_ok: false, ao_last: u64::MAX, split: false, cur: 0, tex_valid: false, frames: 0, prev_jit: [0.0; 2],
                 time_q: None, time_rb: None, time_map: std::ptr::null(), tick_ms: 0.0, ms_acc: 0.0, ms_n: 0, upscale_ms: 0.0 };
             u.init_timing();
@@ -239,8 +244,8 @@ impl Upscaler {
         self.tex_valid = false;
     }
     fn release_ao(&mut self) {
-        for t in [&mut self.ao_nd, &mut self.ao_res, &mut self.ao_f, &mut self.ao_col] { *t = Tex::default(); }
-        for t in self.ao_h.iter_mut().chain(self.ao_hd.iter_mut()) { *t = Tex::default(); }
+        for t in [&mut self.ao_col, &mut self.ao_half, &mut self.ao_half_f, &mut self.ao_nd, &mut self.ao_ndp] { *t = Tex::default(); }
+        for t in self.ao_h.iter_mut().chain(self.ao_hd.iter_mut()).chain(self.ao_mip.iter_mut()) { *t = Tex::default(); }
         self.ao_ok = false;
     }
 
@@ -448,7 +453,7 @@ impl Upscaler {
         self.stamp(cl, ts, 3);
         Self::trans(cl, &mut self.hist[c], srvst);
         Self::trans(cl, &mut self.stab[c], srvst);
-        if s.debug_view == 0 && k.fused_sharpen <= 0.0 {
+        if s.debug_view == 0 && k.fused_sharpen <= 0.0 && !(k.sharpen_mode > 1.5 && !self.split) {
             let (hc, mc, sc) = (self.hist[c].res.clone(), self.mda[c].res.clone(), self.stab[c].res.clone());
             let s_ = [hc.as_ref(), mc.as_ref(), None, None, None, expo.as_ref(), None, sc.as_ref(), None, None, None];
             let f_ = [self.hist[c].fmt, self.mda[c].fmt, X, X, X, exf, X, self.stab[c].fmt, X, X, X];
@@ -474,82 +479,134 @@ impl Upscaler {
     }
 
     #[allow(clippy::too_many_arguments)]
+    /// Relight (CORTAO-style occluders, FastGI and CACAO filters): the prepass and the main pass at half size, the
+    /// depth mips in one pass, the occluder table, the sparse filter, the temporal smoothing by history length, CACAO's
+    /// two blurs in one, and the composition upsampling and applying the curve's baked table.
     fn relight(&mut self, cl: &ID3D12GraphicsCommandList, fr: &Frame, depth: &ID3D12Resource, df: DXGI_FORMAT, color: &ID3D12Resource, cf: DXGI_FORMAT, mf: DXGI_FORMAT, reset: bool) -> Option<(ID3D12Resource, DXGI_FORMAT)> {
         let (rw, rh) = (fr.n.rw, fr.n.rh);
+        let (hw, hh) = (rw.div_ceil(2), rh.div_ceil(2));
         let s = self.s;
         const X: DXGI_FORMAT = DXGI_FORMAT_UNKNOWN;
+        const F16: DXGI_FORMAT = DXGI_FORMAT_R16G16B16A16_FLOAT;
         let srvst = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
         let uavst = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        if !(self.ao_nd.res.is_some() && self.ao_nd.w == rw && self.ao_nd.h == rh) {
+        if !(self.ao_col.res.is_some() && self.ao_col.w == rw && self.ao_col.h == rh) {
             self.release_ao();
-            let mut t: [Tex; 4] = Default::default();
-            let fs = [DXGI_FORMAT_R32G32B32A32_FLOAT, DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R16G16B16A16_FLOAT];
-            for (x, f) in t.iter_mut().zip(fs) { if !self.make_tex(x, rw, rh, f) { return None; } }
-            let [a, b, c, d] = t; self.ao_nd = a; self.ao_res = b; self.ao_f = c; self.ao_col = d;
+            let mut t: [Tex; 5] = Default::default();
+            let spec = [(rw, rh, F16), (hw, hh, F16), (hw, hh, F16), (hw, hh, DXGI_FORMAT_R32G32B32A32_FLOAT), (hw, hh, DXGI_FORMAT_R32G32_UINT)];
+            for (x, (w, h, f)) in t.iter_mut().zip(spec) { if !self.make_tex(x, w, h, f) { return None; } }
+            let [a, b, c, d, e] = t; self.ao_col = a; self.ao_half = b; self.ao_half_f = c; self.ao_nd = d; self.ao_ndp = e;
+            for l in 1..=4u32 { let mut m = Tex::default(); if !self.make_tex(&mut m, (rw + (1 << l) - 1) >> l, (rh + (1 << l) - 1) >> l, DXGI_FORMAT_R32G32B32A32_UINT) { return None; } self.ao_mip[l as usize - 1] = m; }
         }
-        let mut ka = AoConstants { rs: [rw as f32, rh as f32], rs_rcp: [1.0 / rw as f32, 1.0 / rh as f32], ..Default::default() };
-        let fov = if fr.fov_y > 0.01 && fr.fov_y < 3.1 { fr.fov_y } else { 1.0472 };
-        ka.tan_y = (0.5 * fov).tan(); ka.tan_x = ka.tan_y * rw as f32 / rh as f32;
-        ka.z_near = if fr.z_near > 0.0 { fr.z_near } else { 0.1 }; ka.z_far = if fr.z_far > 0.0 { fr.z_far } else { 100000.0 };
-        ka.inverted = fr.n.depth_inverted as u8 as f32; ka.frame = (self.frames % 1024) as f32;
-        ka.ao_strength = s.ao_strength.clamp(0.0, 1.0); ka.gi_strength = s.gi_strength.clamp(0.0, 4.0); ka.gi_dark = s.gi_dark.clamp(0.0, 4.0);
-        ka.s_curve = s.s_curve.clamp(0.0, 1.0);
-        ka.pivot = if fr.n.hdr || float_format(cf) { 0.071 } else { 0.3 };
-        ka.radius_world = s.ao_radius; ka.radius_screen = if s.ao_screen > 0.01 { s.ao_screen } else { 0.5 };
-        ka.rays = if s.ao_rays < 4.0 { 4.0 } else if s.ao_rays > 32.0 { 32.0 } else { (s.ao_rays + 0.5).floor() };
-        ka.contact = s.ao_contact.clamp(0.0, 4.0); ka.spatial = s.ao_spatial.clamp(1.0, 2.0);
-        ka.mv_scale = [s.mv_sign * fr.n.mv_to_uv[0], s.mv_sign * fr.n.mv_to_uv[1]]; ka.mv_size = fr.n.mv_res;
+        let af = AoFrame { rw, rh, fov_y: fr.fov_y, z_near: fr.z_near, z_far: fr.z_far, meters_per_unit: fr.meters_per_unit, depth_inverted: fr.n.depth_inverted,
+            hdr: fr.n.hdr, mv_to_uv: fr.n.mv_to_uv, mv_res: fr.n.mv_res };
+        let mut ka = consts::fill_ao(&s, &af, float_format(cf), self.frames);
+        ka.mips = 1.0; ka.cmips = s.ao_color_mips as u8 as f32; ka.half_res = 1.0;
         let mut ao_t = s.ao_temporal;
         if ao_t && self.ao_h[0].res.is_none() {
             let mut t: [Tex; 4] = Default::default();
-            let fs = [DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R32_FLOAT, DXGI_FORMAT_R32_FLOAT];
-            ao_t = t.iter_mut().zip(fs).all(|(x, f)| self.make_tex(x, rw, rh, f));
+            let fs = [F16, F16, DXGI_FORMAT_R32_FLOAT, DXGI_FORMAT_R32_FLOAT];
+            ao_t = t.iter_mut().zip(fs).all(|(x, f)| self.make_tex(x, hw, hh, f));
             if ao_t { let [a, b, c, d] = t; self.ao_h = [a, b]; self.ao_hd = [c, d]; }
         }
         let valid = ao_t && self.ao_ok && self.ao_last.wrapping_add(1) == self.frames && !reset;
         ka.temporal = if valid { s.ao_temporal_weight.clamp(0.0, 0.95) } else { 0.0 };
-        let gx = rw.div_ceil(8); let gy = rh.div_ceil(8);
-        fn n(a: [Option<&ID3D12Resource>; 3]) -> [Option<&ID3D12Resource>; K_SRVS] { [a[0], a[1], a[2], None, None, None, None, None, None, None, None] }
-        Self::trans(cl, &mut self.ao_nd, uavst);
-        let nd = self.ao_nd.res.clone();
-        let pso = self.p.ao_prep.clone().unwrap();
-        self.run(cl, &pso, &ka, n([Some(depth), None, None]), [df, X, X, X, X, X, X, X, X, X, X], [nd.as_ref(), None, None, None, None], [self.ao_nd.fmt, X, X, X, X], gx, gy);
-        Self::trans(cl, &mut self.ao_nd, srvst);
-        Self::trans(cl, &mut self.ao_res, uavst);
-        let res = self.ao_res.res.clone();
-        let pso = self.p.ao_main.clone().unwrap();
-        self.run(cl, &pso, &ka, n([nd.as_ref(), Some(color), None]), [self.ao_nd.fmt, cf, X, X, X, X, X, X, X, X, X], [res.as_ref(), None, None, None, None], [self.ao_res.fmt, X, X, X, X], gx, gy);
-        for axis in 0..2 {
-            let (src_is_f, (src, dst)) = if axis == 1 { (true, (self.ao_f.res.clone(), self.ao_res.res.clone())) } else { (false, (self.ao_res.res.clone(), self.ao_f.res.clone())) };
-            if src_is_f { Self::trans(cl, &mut self.ao_f, srvst); Self::trans(cl, &mut self.ao_res, uavst); } else { Self::trans(cl, &mut self.ao_res, srvst); Self::trans(cl, &mut self.ao_f, uavst); }
-            ka.axis = axis as f32;
-            let fmt = DXGI_FORMAT_R16G16B16A16_FLOAT;
-            let pso = self.p.ao_filter.clone().unwrap();
-            self.run(cl, &pso, &ka, n([nd.as_ref(), src.as_ref(), None]), [self.ao_nd.fmt, fmt, X, X, X, X, X, X, X, X, X], [dst.as_ref(), None, None, None, None], [fmt, X, X, X, X], gx, gy);
+        fn sv<'a>(v: &[Option<&'a ID3D12Resource>]) -> [Option<&'a ID3D12Resource>; K_SRVS] { let mut a = [None; K_SRVS]; a[..v.len()].copy_from_slice(v); a }
+        fn sf(v: &[DXGI_FORMAT]) -> [DXGI_FORMAT; K_SRVS] { let mut a = [DXGI_FORMAT_UNKNOWN; K_SRVS]; a[..v.len()].copy_from_slice(v); a }
+        fn uv<'a>(v: &[Option<&'a ID3D12Resource>]) -> [Option<&'a ID3D12Resource>; K_UAVS] { let mut a = [None; K_UAVS]; a[..v.len()].copy_from_slice(v); a }
+        fn uf(v: &[DXGI_FORMAT]) -> [DXGI_FORMAT; K_UAVS] { let mut a = [DXGI_FORMAT_UNKNOWN; K_UAVS]; a[..v.len()].copy_from_slice(v); a }
+        let r = |t: &Tex| t.res.clone();
+        let lut = s.ao_lut && (self.ao_lut.res.is_some() || { let mut t = Tex::default(); let ok = self.make_tex(&mut t, 32 * 32, 32, DXGI_FORMAT_R32_UINT); if ok { self.ao_lut = t; } ok });
+        if lut && !self.ao_lut_made {
+            Self::trans(cl, &mut self.ao_lut, uavst);
+            let (l, p) = (r(&self.ao_lut), self.p.ao_lut.clone().unwrap());
+            self.run(cl, &p, &ka, sv(&[]), sf(&[]), uv(&[l.as_ref()]), uf(&[DXGI_FORMAT_R32_UINT]), (32 * 32u32).div_ceil(8), 4);
+            Self::trans(cl, &mut self.ao_lut, srvst);
+            self.ao_lut_made = true;
         }
-        Self::trans(cl, &mut self.ao_res, srvst);
-        let mut ao_out = self.ao_res.res.clone();
-        let mut ao_fmt = self.ao_res.fmt;
+        ka.lut = lut as u8 as f32;
+        let cl8 = ka.curve_n > 1.5 && s.ao_curve_lut && (self.ao_curve.res.is_some() || { let mut t = Tex::default(); let ok = self.make_tex(&mut t, 4096, 1, DXGI_FORMAT_R32_FLOAT); if ok { self.ao_curve = t; self.curve_key[24] = -1.0; } ok });
+        if cl8 {
+            let mut key = [0f32; 26];
+            key[..8].copy_from_slice(&ka.curve_x); key[8..16].copy_from_slice(&ka.curve_y); key[16..24].copy_from_slice(&ka.curve_y2); key[24] = ka.curve_n; key[25] = ka.pivot;
+            if key != self.curve_key {
+                Self::trans(cl, &mut self.ao_curve, uavst);
+                let (c, p) = (r(&self.ao_curve), self.p.ao_curve.clone().unwrap());
+                self.run(cl, &p, &ka, sv(&[]), sf(&[]), uv(&[c.as_ref()]), uf(&[DXGI_FORMAT_R32_FLOAT]), 4096 / 64, 1);
+                Self::trans(cl, &mut self.ao_curve, srvst);
+                self.curve_key = key;
+            }
+        }
+        ka.flags = ((ka.flags as u32) | 4 | 8 | if s.ao_history_length { 32 } else { 0 } | 131072 | if cl8 { 262144 } else { 0 }) as f32;
+        let (nd, ndp) = (r(&self.ao_nd), r(&self.ao_ndp));
+        let (ndf, ndpf) = (self.ao_nd.fmt, self.ao_ndp.fmt);
+        // Prepass at half size: normal and depth, packed copy at t7 for every later pass.
+        Self::trans(cl, &mut self.ao_nd, uavst); Self::trans(cl, &mut self.ao_ndp, uavst);
+        let p = self.p.ao_prep.clone().unwrap();
+        self.run(cl, &p, &ka, sv(&[Some(depth)]), sf(&[df]), uv(&[nd.as_ref(), ndp.as_ref()]), uf(&[ndf, ndpf]), hw.div_ceil(8), hh.div_ceil(8));
+        Self::trans(cl, &mut self.ao_nd, srvst); Self::trans(cl, &mut self.ao_ndp, srvst);
+        macro_rules! with7 { ($a:expr, $f:expr) => {{ let mut a = $a; let mut f = $f; a[7] = ndp.as_ref(); f[7] = ndpf; (a, f) }} }
+        // Depth mips 1 - 4 (the colour's mean packed in), one pass.
+        for m in self.ao_mip.iter_mut() { Self::trans(cl, m, uavst); }
+        let mips: Vec<Option<ID3D12Resource>> = self.ao_mip.iter().map(r).collect();
+        let mipf = DXGI_FORMAT_R32G32B32A32_UINT;
+        let (a, f) = with7!(sv(&[nd.as_ref(), Some(color)]), sf(&[ndf, cf]));
+        let p = self.p.ao_mipall.clone().unwrap();
+        self.run(cl, &p, &ka, a, f, uv(&[mips[0].as_ref(), mips[1].as_ref(), mips[2].as_ref(), mips[3].as_ref()]), uf(&[mipf, mipf, mipf, mipf]), self.ao_mip[0].w.div_ceil(16), self.ao_mip[0].h.div_ceil(16));
+        for m in self.ao_mip.iter_mut() { Self::trans(cl, m, srvst); }
+        // Main pass at half size.
+        let (h0, h1) = (r(&self.ao_half), r(&self.ao_half_f));
+        Self::trans(cl, &mut self.ao_half, uavst);
+        let lr = r(&self.ao_lut);
+        let (a, f) = with7!(sv(&[nd.as_ref(), Some(color), mips[0].as_ref(), mips[1].as_ref(), mips[2].as_ref(), mips[3].as_ref(), if lut { lr.as_ref() } else { None }]),
+            sf(&[ndf, cf, mipf, mipf, mipf, mipf, if lut { DXGI_FORMAT_R32_UINT } else { X }]));
+        let (p, g) = if s.ao_wg16 { (self.p.ao_main16.clone().unwrap(), 16) } else { (self.p.ao_main.clone().unwrap(), 8) };
+        self.run(cl, &p, &ka, a, f, uv(&[h0.as_ref()]), uf(&[F16]), hw.div_ceil(g), hh.div_ceil(g));
+        ka.rs = [hw as f32, hh as f32]; ka.rs_rcp = [1.0 / hw as f32, 1.0 / hh as f32];
+        // Sparse spatial filter: half -> half_f.
+        Self::trans(cl, &mut self.ao_half, srvst); Self::trans(cl, &mut self.ao_half_f, uavst);
+        ka.axis = 2.0;
+        let (a, f) = with7!(sv(&[nd.as_ref(), h0.as_ref()]), sf(&[ndf, F16]));
+        let p = self.p.ao_filter.clone().unwrap();
+        self.run(cl, &p, &ka, a, f, uv(&[h1.as_ref()]), uf(&[F16]), hw.div_ceil(8), hh.div_ceil(8));
+        Self::trans(cl, &mut self.ao_half_f, srvst);
+        let mut out = h1.clone();
+        let mut out_is_f = true;
         if ao_t {
             let (ci, pi) = (self.ao_cur, self.ao_cur ^ 1);
             Self::trans(cl, &mut self.ao_h[pi], srvst); Self::trans(cl, &mut self.ao_hd[pi], srvst);
             Self::trans(cl, &mut self.ao_h[ci], uavst); Self::trans(cl, &mut self.ao_hd[ci], uavst);
-            let (hp, hdp, hc, hdc) = (self.ao_h[pi].res.clone(), self.ao_hd[pi].res.clone(), self.ao_h[ci].res.clone(), self.ao_hd[ci].res.clone());
-            let prev = if valid { hp.as_ref() } else { res.as_ref() };
-            let s_ = [nd.as_ref(), res.as_ref(), prev, hdp.as_ref(), Some(&fr.mv), None, None, None, None, None, None];
-            let f_ = [self.ao_nd.fmt, self.ao_res.fmt, DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R32_FLOAT, mf, X, X, X, X, X, X];
-            let pso = self.p.ao_temporal.clone().unwrap();
-            self.run(cl, &pso, &ka, s_, f_, [hc.as_ref(), hdc.as_ref(), None, None, None], [DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R32_FLOAT, X, X, X], gx, gy);
+            let (hp, hdp, hc, hdc) = (r(&self.ao_h[pi]), r(&self.ao_hd[pi]), r(&self.ao_h[ci]), r(&self.ao_hd[ci]));
+            let (a, f) = with7!(sv(&[nd.as_ref(), h1.as_ref(), if valid { hp.as_ref() } else { h1.as_ref() }, hdp.as_ref(), Some(&fr.mv)]), sf(&[ndf, F16, F16, DXGI_FORMAT_R32_FLOAT, mf]));
+            let p = self.p.ao_temporal.clone().unwrap();
+            self.run(cl, &p, &ka, a, f, uv(&[hc.as_ref(), hdc.as_ref()]), uf(&[F16, DXGI_FORMAT_R32_FLOAT]), hw.div_ceil(8), hh.div_ceil(8));
             Self::trans(cl, &mut self.ao_h[ci], srvst);
-            ao_out = hc; ao_fmt = DXGI_FORMAT_R16G16B16A16_FLOAT;
+            out = hc; out_is_f = false;
             self.ao_cur ^= 1; self.ao_ok = true; self.ao_last = self.frames;
         } else { self.ao_ok = false; }
+        if s.ao_cacao {
+            let passes = s.ao_cacao_passes.clamp(1, 8);
+            let fused = passes == 2;
+            for _ in 0..if fused { 1 } else { passes } {
+                let to_f = !out_is_f;
+                if to_f { Self::trans(cl, &mut self.ao_half_f, uavst); Self::trans(cl, &mut self.ao_half, srvst); } else { Self::trans(cl, &mut self.ao_half, uavst); Self::trans(cl, &mut self.ao_half_f, srvst); }
+                let dst = if to_f { h1.clone() } else { h0.clone() };
+                let (a, f) = with7!(sv(&[nd.as_ref(), out.as_ref()]), sf(&[ndf, F16]));
+                let p = if fused { self.p.ao_cacao2.clone() } else { self.p.ao_cacao.clone() }.unwrap();
+                self.run(cl, &p, &ka, a, f, uv(&[dst.as_ref()]), uf(&[F16]), hw.div_ceil(8), hh.div_ceil(8));
+                if to_f { Self::trans(cl, &mut self.ao_half_f, srvst); } else { Self::trans(cl, &mut self.ao_half, srvst); }
+                out = dst; out_is_f = to_f;
+            }
+        }
+        ka.rs = [rw as f32, rh as f32]; ka.rs_rcp = [1.0 / rw as f32, 1.0 / rh as f32];
+        // Composition at render size: upsample by depth and normal, occlusion and bounce, curves.
         Self::trans(cl, &mut self.ao_col, uavst);
-        let col = self.ao_col.res.clone();
-        let pso = self.p.ao_compose.clone().unwrap();
-        self.run(cl, &pso, &ka, n([nd.as_ref(), Some(color), ao_out.as_ref()]), [self.ao_nd.fmt, cf, ao_fmt, X, X, X, X, X, X, X, X], [col.as_ref(), None, None, None, None], [self.ao_col.fmt, X, X, X, X], gx, gy);
+        let (col, cr) = (r(&self.ao_col), r(&self.ao_curve));
+        let (a, f) = with7!(sv(&[nd.as_ref(), Some(color), out.as_ref(), Some(depth), if cl8 { cr.as_ref() } else { None }]), sf(&[ndf, cf, F16, df, if cl8 { DXGI_FORMAT_R32_FLOAT } else { X }]));
+        let p = self.p.ao_compose.clone().unwrap();
+        self.run(cl, &p, &ka, a, f, uv(&[col.as_ref()]), uf(&[F16]), rw.div_ceil(8), rh.div_ceil(8));
         Self::trans(cl, &mut self.ao_col, srvst);
-        Some((col?, self.ao_col.fmt))
+        Some((col?, F16))
     }
 }
 
@@ -574,7 +631,7 @@ pub fn frame_from_ffx(d: &ffx::DispatchUpscale, ci: &CreateInfo) -> Option<Frame
             n: FrameNums { rw, rh, ow, oh, jit: [d.jitter.x, d.jitter.y], mv_to_uv: [d.mv_scale.x / mv_res[0], d.mv_scale.y / mv_res[1]], mv_res,
                 jittered_mv: ci.flags & ffx::ENABLE_MV_JITTER_CANCELLATION != 0, depth_inverted: ci.flags & ffx::ENABLE_DEPTH_INVERTED != 0,
                 hdr: ci.flags & ffx::ENABLE_HDR != 0, exposure_mul: 1.0, pre_exposure: if d.pre_exposure > 0.0 { d.pre_exposure } else { 1.0 }, reactive_mul: 1.0 },
-            reset: d.reset, fov_y: d.camera_fov_y, z_near: d.camera_near, z_far: d.camera_far,
+            reset: d.reset, fov_y: d.camera_fov_y, z_near: d.camera_near, z_far: d.camera_far, meters_per_unit: d.view_to_meters,
         })
     }
 }
