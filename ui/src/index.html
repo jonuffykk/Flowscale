@@ -684,7 +684,7 @@ function onState(m) {
   renderAll();
 }
 let lastStatus = "";
-function onDetector(d) { const el = $("#detState"); if (!el) return; el.textContent = d?.code ? t(d.code, ...(d.args || []).map(a => /\.exe$/i.test(a) ? short(a) : a)) : t("det_idle"); }
+function onDetector(d) { const el = $("#detState"); if (!el) return; el.innerHTML = d?.code ? status(d.code, (d.args || []).map(a => /\.exe$/i.test(a) ? short(a) : a)) : status("det_idle"); }
 function setStatus(code, args) { lastStatus = code; $("#status").innerHTML = status(code, args); }
 
 // ---------------------------------------------------------------- live telemetry
